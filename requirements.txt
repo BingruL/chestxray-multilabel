@@ -1,0 +1,34 @@
+# ChestX-ray14 Multi-label Classification
+# Core dependencies
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+timm>=0.9.0
+torchxrayvision>=1.2.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+Pillow>=9.0.0
+opencv-python>=4.7.0
+
+# Machine Learning
+scikit-learn>=1.2.0
+
+# Utilities
+tqdm>=4.65.0
+
+# Optional: Visualization
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
+
+# Optional: Experiment Tracking
+# wandb>=0.15.0
+# tensorboard>=2.13.0
+
+# Optional: Development
+# pytest>=7.0.0
+# black>=23.0.0
+# isort>=5.12.0
+# flake8>=6.0.0
