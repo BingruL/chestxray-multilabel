@@ -12,6 +12,10 @@ LABEL_CSV = os.path.join(NIH_DATA_ROOT, "filtered_labels.csv")
 SAVE_DIR = "saved_models"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
+# 日志保存目录
+LOGS_DIR = "logs"
+os.makedirs(LOGS_DIR, exist_ok=True)
+
 # ====== 类别信息（ChestX-ray14 的 14 类） ======
 CLASS_NAMES = [
     "Atelectasis",

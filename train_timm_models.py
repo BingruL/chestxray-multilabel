@@ -58,6 +58,7 @@ from loss_utils import (
     LogitAdjustedLoss,
     get_logit_adjustment,
 )
+from log_utils import setup_logger, close_logger
 
 
 
@@ -817,6 +818,9 @@ def train_one_model(cfg, df_labels, train_files, val_files):
 
 
 def main():
+    # 设置日志记录，所有 print 输出同时保存到 logs/ 目录
+    setup_logger("train_timm_models")
+    
     os.makedirs(SAVE_DIR, exist_ok=True)
     df_labels, train_files, val_files = prepare_data()
 
@@ -835,6 +839,9 @@ def main():
     
     from ensemble_timm import main as ensemble_main
     ensemble_main()
+    
+    # 关闭日志记录
+    close_logger()
 
 
 if __name__ == "__main__":

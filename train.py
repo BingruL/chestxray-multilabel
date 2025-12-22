@@ -43,6 +43,7 @@ from loss_utils import (
     LogitAdjustedLoss,
     get_logit_adjustment,
 )
+from log_utils import setup_logger, close_logger
 
 
 # ================== 集成学习配置 ==================
@@ -793,6 +794,9 @@ def train_ensemble():
     - F1 计算：使用所有模型的加权平均（排除 mimic_nb 和 mimic_ch 后的效果可能更好）
     - AUC 计算：使用 PC + CheXpert 的贪婪集成，搜索最佳比例
     """
+    # 设置日志记录，所有 print 输出同时保存到 logs/ 目录
+    setup_logger("train_xrv_ensemble")
+    
     print("=" * 60)
     print("ChestX-ray14 多标签分类 - 集成学习")
     print("=" * 60)
@@ -914,6 +918,9 @@ def train_ensemble():
         print(f"\nAUC 计算: 使用 PC({auc_ensemble_result['pc_ratio']:.2f}) + CheXpert({auc_ensemble_result['chex_ratio']:.2f})")
         print(f"  -> 最佳 AUC = {auc_ensemble_result['best_auc']:.4f}")
     print("=" * 60)
+    
+    # 关闭日志记录
+    close_logger()
     
     return {
         "f1_ensemble": f1_ensemble_result,
