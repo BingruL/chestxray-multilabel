@@ -375,12 +375,18 @@ def train_single_model(model_name, xrv_weights, df_labels, train_files, val_file
         batch_size = BATCH_SIZE
     
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=4, pin_memory=True,
+        train_dataset, 
+        batch_size=batch_size, 
+        shuffle=True,
+        num_workers=4, 
+        pin_memory=True,
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False,
-        num_workers=4, pin_memory=True,
+        val_dataset, 
+        batch_size=batch_size, 
+        shuffle=False,
+        num_workers=4, 
+        pin_memory=True,
     )
     
     # 构建基础模型
@@ -559,15 +565,14 @@ def train_single_model(model_name, xrv_weights, df_labels, train_files, val_file
         auc_macro_t, f1_macro_t, f1_weighted_t = compute_metrics(y_true, y_pred_prob, thresholds)
         
         # 打印结果（包含阶段信息）
-        # 注意：AUC 是阈值无关的指标，只需显示一次
+        # 注意：AUC 是阈值无关的指标
         stage_info = f" [Stage {current_stage}]" if USE_TWO_STAGE else ""
         print(f"\n[{model_name}] Epoch {epoch}{stage_info}:")
         print(f"  Train Loss: {avg_train_loss:.4f}")
         print(f"  Val AUC:                  {auc_macro:.4f}")
         print(f"  Val Macro-F1 (thr=0.5):   {f1_macro:.4f}")
-        print(f"  Val Weighted-F1 (thr=0.5):{f1_weighted:.4f}")
         print(f"  Val Macro-F1 (best thr):  {f1_macro_t:.4f}")
-        print(f"  Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
+        # print(f"  Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
         if USE_TWO_STAGE:
             print(f"  Current LR: {optimizer.param_groups[0]['lr']:.6f}")
         
@@ -580,7 +585,7 @@ def train_single_model(model_name, xrv_weights, df_labels, train_files, val_file
             no_improve_epochs = 0
             
             torch.save({
-                "model_state": model.state_dict(),
+                "model_state": ema.state_dict() if ema is not None else model.state_dict(),
                 "thresholds": best_thresholds,
                 "model_type": model_name,
                 "epoch": epoch,
@@ -833,12 +838,12 @@ def train_ensemble():
     print(f"\nF1 集成预测指标 (阈值=0.5):")
     print(f"  AUC:         {f1_ensemble_result['auc_thr05']:.4f}")
     print(f"  Macro-F1:    {f1_ensemble_result['f1_macro_thr05']:.4f}")
-    print(f"  Weighted-F1: {f1_ensemble_result['f1_weighted_thr05']:.4f}")
+    # print(f"  Weighted-F1: {f1_ensemble_result['f1_weighted_thr05']:.4f}")
     
     print(f"\nF1 集成预测指标 (最优阈值):")
     print(f"  AUC:         {f1_ensemble_result['auc_best_thr']:.4f}")
     print(f"  Macro-F1:    {f1_ensemble_result['f1_macro_best_thr']:.4f}")
-    print(f"  Weighted-F1: {f1_ensemble_result['f1_weighted_best_thr']:.4f}")
+    # print(f"  Weighted-F1: {f1_ensemble_result['f1_weighted_best_thr']:.4f}")
     
     # ========== Part 2: AUC 贪婪集成（只用 PC + CheXpert） ==========
     print(f"\n{'='*60}")

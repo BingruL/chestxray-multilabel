@@ -45,7 +45,7 @@ def main():
     print("===== 单模型表现 =====")
     for name in MODEL_NAMES:
         auc, f1_macro, f1_weighted = compute_metrics(y_true_ref, preds[name], thresholds=None)
-        print(f"{name:25s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}  Weighted-F1={f1_weighted:.4f}")
+        print(f"{name:25s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}")
 
     print("\n===== 两模型平均集成 =====")
     best_score = -1.0
@@ -57,7 +57,7 @@ def main():
     for combo in itertools.combinations(MODEL_NAMES, 2):
         prob_ens = (preds[combo[0]] + preds[combo[1]]) / 2.0
         auc, f1_macro, f1_weighted = compute_metrics(y_true_ref, prob_ens, thresholds=None)
-        print(f"{'+'.join(combo):50s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}  Weighted-F1={f1_weighted:.4f}")
+        print(f"{'+'.join(combo):50s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}")
         if f1_macro > best_score:
             best_score = f1_macro
             best_f1_weighted = f1_weighted
@@ -69,7 +69,7 @@ def main():
     for combo in itertools.combinations(MODEL_NAMES, 3):
         prob_ens = sum(preds[n] for n in combo) / len(combo)
         auc, f1_macro, f1_weighted = compute_metrics(y_true_ref, prob_ens, thresholds=None)
-        print(f"{'+'.join(combo):50s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}  Weighted-F1={f1_weighted:.4f}")
+        print(f"{'+'.join(combo):50s}  AUC={auc:.4f}  Macro-F1={f1_macro:.4f}")
         if f1_macro > best_score:
             best_score = f1_macro
             best_f1_weighted = f1_weighted
@@ -81,7 +81,7 @@ def main():
     print(f"最优组合: {best_combo}")
     print(f" AUC         = {best_auc:.4f}")
     print(f" Macro-F1    = {best_score:.4f}")
-    print(f" Weighted-F1 = {best_f1_weighted:.4f}")
+    # print(f" Weighted-F1 = {best_f1_weighted:.4f}")
 
     # 进一步：对最优组合做加权搜索 & logistic stacking
     def search_weighted_average(selected):
@@ -119,7 +119,7 @@ def main():
             clf.fit(X, y)
             stacked_probs[:, cls] = clf.predict_proba(X)[:, 1]
         auc_stack, f1_stack_macro, f1_stack_weighted = compute_metrics(y_true_ref, stacked_probs, thresholds=None)
-        print(f">>> Logistic stacking on best combo: AUC={auc_stack:.4f}, Macro-F1={f1_stack_macro:.4f}, Weighted-F1={f1_stack_weighted:.4f}")
+        print(f">>> Logistic stacking on best combo: AUC={auc_stack:.4f}, Macro-F1={f1_stack_macro:.4f}")
         if f1_stack_macro > best_score:
             best_score = f1_stack_macro
             best_f1_weighted = f1_stack_weighted

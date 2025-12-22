@@ -33,10 +33,19 @@ from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 
 from cxr_config import (
     LABEL_CSV, IMAGES_DIR, SAVE_DIR,
-    DEVICE, RANDOM_SEED,
-    BATCH_SIZE, NUM_EPOCHS, WARMUP_EPOCHS, LR, WEIGHT_DECAY, VAL_RATIO, CLASS_NAMES,
-    MIXUP_ALPHA, GRAD_CLIP_NORM, USE_EMA,
-    EARLY_STOP, EARLY_STOP_PATIENCE, EARLY_STOP_MIN_DELTA,
+    DEVICE, RANDOM_SEED, VAL_RATIO, CLASS_NAMES,
+    # Timm 模型专用配置
+    TIMM_BATCH_SIZE as BATCH_SIZE,
+    TIMM_NUM_EPOCHS as NUM_EPOCHS,
+    TIMM_WARMUP_EPOCHS as WARMUP_EPOCHS,
+    TIMM_LR as LR,
+    TIMM_WEIGHT_DECAY as WEIGHT_DECAY,
+    TIMM_MIXUP_ALPHA as MIXUP_ALPHA,
+    TIMM_GRAD_CLIP_NORM as GRAD_CLIP_NORM,
+    TIMM_USE_EMA as USE_EMA,
+    TIMM_EARLY_STOP as EARLY_STOP,
+    TIMM_EARLY_STOP_PATIENCE as EARLY_STOP_PATIENCE,
+    TIMM_EARLY_STOP_MIN_DELTA as EARLY_STOP_MIN_DELTA,
 )
 from dataset import ChestXrayDataset, ChestXrayMultiResDatasetV2
 from metrics_utils import compute_metrics, search_best_thresholds
@@ -165,25 +174,61 @@ MODEL_CONFIGS = [
         "backbone": "tf_efficientnetv2_s.in21k",  # ImageNet-21k 预训练，泛化性更强
         "img_size": 384,                          # 推荐分辨率
     },
+
+    # -------- Swin Transformer 系列 --------
+    {
+        "name": "swin_base_in22k_384",
+        "backbone": "swin_base_patch4_window12_384.ms_in22k_ft_in1k",
+        "img_size": 384,
+    },
+    {
+        "name": "swin_large_in22k_384",
+        "backbone": "swin_large_patch4_window12_384.ms_in22k_ft_in1k",
+        "img_size": 384,
+    },
+
+    # -------- MaxViT 系列 --------
+    {
+        "name": "maxvit_base_in21k_384",
+        "backbone": "maxvit_base_tf_384.in21k_ft_in1k",
+        "img_size": 384,
+    },
+    {
+        "name": "maxvit_base_in21k_512",
+        "backbone": "maxvit_base_tf_512.in21k_ft_in1k",
+        "img_size": 512,
+    },
+
+    # -------- ConvNeXt V2 --------
+    {
+        "name": "convnextv2_base_fcmae_384",
+        "backbone": "convnextv2_base.fcmae_ft_in22k_in1k_384",
+        "img_size": 384,
+    },
+
+    # -------- EVA-02 --------
+    {
+        "name": "eva02_large_448",
+        "backbone": "eva02_large_patch14_448.mim_m38m_ft_in22k_in1k",
+        "img_size": 448,
+    },
 ]
 
-# 你可以通过这个名单控制到底训练哪几个，先不要一次性全开
+# 通过这个名单控制要训练的模型
 MODELS_TO_TRAIN = [
-    #"convnext_base_in22k", 性能过关
-    #"convnext_base_in1k",  性能过关
+   "convnext_base_in22k",
+   "convnext_base_in1k",
 
-    #"convnext_base_in22k_384",
-    #"convnext_base_in22k_512",
+   "convnext_base_in22k_384",
+   "convnext_base_in22k_512",
 
-    #"vit_base_in21k",  性能过关
-    "vit_base_in1k",
-    #"vit_base_in21k_384",
-    #"vit_base_in21k_512",
-
-    "efficientnet_b4_ns",
-    #"efficientnet_b4_ns_512",
-
+   # 新增模型
+   #"swin_base_in22k_384",  #性能不如convnext
+   "convnextv2_base_fcmae_384",
+   #"maxvit_base_in21k_512",  #很大，还未训练
+   #"eva02_large_448",       #很大，还未训练
 ]
+
 
 # ================== EfficientNetV2 策略配置 ==================
 # 强力推荐：使用 EfficientNetV2-S (ImageNet-21k) 配合 SE 模块和 AG-Crop
@@ -229,7 +274,7 @@ TIMM_FEATURE_DIMS = {
 }
 
 # ================== 两阶段训练策略配置 ==================
-USE_TWO_STAGE = False          # 是否启用两阶段训练
+USE_TWO_STAGE = False         # 是否启用两阶段训练
 STAGE1_EPOCHS = 15            # Stage 1 的 epoch 数
 STAGE2_LOSS = "asl"           # Stage 2 使用的损失函数: asl, la, focal
 STAGE2_LR_FACTOR = 0.1        # Stage 2 学习率倍数
@@ -585,6 +630,11 @@ def train_one_model(cfg, df_labels, train_files, val_files):
     val_pred_path = os.path.join(SAVE_DIR, f"val_preds_{name}.npz")
     no_improve_epochs = 0
     
+    # 跟踪整个训练过程中的最佳指标
+    best_auc_ever = -1.0
+    best_f1_macro_ever = -1.0
+    best_f1_weighted_ever = -1.0
+    
     # 两阶段训练状态
     current_stage = 1
     stage2_criterion = None
@@ -704,15 +754,21 @@ def train_one_model(cfg, df_labels, train_files, val_files):
         thresholds = search_best_thresholds(y_true, y_pred_prob)
         auc_macro_t, f1_macro_t, f1_weighted_t = compute_metrics(y_true, y_pred_prob, thresholds)
 
+        # 更新整个训练过程中的最佳指标
+        if auc_macro > best_auc_ever:
+            best_auc_ever = auc_macro
+        if f1_macro_t > best_f1_macro_ever:
+            best_f1_macro_ever = f1_macro_t
+        if f1_weighted_t > best_f1_weighted_ever:
+            best_f1_weighted_ever = f1_weighted_t
+
         stage_info = f" [Stage {current_stage}]" if USE_TWO_STAGE else ""
         print(f"\n[{name}] Epoch {epoch}{stage_info}:")
         print(f"  Train Loss: {avg_train_loss:.4f}")
-        print(f"  Val AUC (thr=0.5):        {auc_macro:.4f}")
+        print(f"  Val AUC:        {auc_macro:.4f}")
         print(f"  Val Macro-F1 (thr=0.5):   {f1_macro:.4f}")
-        print(f"  Val Weighted-F1 (thr=0.5):{f1_weighted:.4f}")
-        print(f"  Val AUC (best thr):       {auc_macro_t:.4f}")
         print(f"  Val Macro-F1 (best thr):  {f1_macro_t:.4f}")
-        print(f"  Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
+        # print(f"  Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
         if USE_TWO_STAGE:
             print(f"  Current LR: {optimizer.param_groups[0]['lr']:.6f}")
 
@@ -723,7 +779,7 @@ def train_one_model(cfg, df_labels, train_files, val_files):
             no_improve_epochs = 0
             torch.save(
                 {
-                    "model_state": model.state_dict(),
+                    "model_state": ema.state_dict() if ema is not None else model.state_dict(),
                     "thresholds": best_thresholds,
                     "backbone": backbone,
                     "img_size": img_size,
@@ -736,7 +792,14 @@ def train_one_model(cfg, df_labels, train_files, val_files):
                 },
                 model_path,
             )
-            np.savez(val_pred_path, y_true=y_true, y_pred_prob=y_pred_prob)
+            np.savez(
+                val_pred_path,
+                y_true=y_true,
+                y_pred_prob=y_pred_prob,
+                best_auc=best_auc_ever,
+                best_f1_macro=best_f1_macro_ever,
+                best_f1_weighted=best_f1_weighted_ever,
+            )
             print(f"  >> 新的最优模型已保存: {model_path}")
             print(f"  >> 验证集预测已保存: {val_pred_path}")
         else:
@@ -746,7 +809,10 @@ def train_one_model(cfg, df_labels, train_files, val_files):
             print(f"\n[EarlyStop] {name}: no improvement in {EARLY_STOP_PATIENCE} epochs (best F1={best_val_score:.4f}). Stop at epoch {epoch}.")
             break
 
-    print(f"\n[{name}] 训练结束，最佳验证 F1 = {best_val_score:.4f}")
+    print(f"\n[{name}] 训练结束，整个训练过程最佳指标:")
+    print(f"    Best AUC:         {best_auc_ever:.4f}")
+    print(f"    Best Macro-F1:    {best_f1_macro_ever:.4f}")
+    # print(f"    Best Weighted-F1: {best_f1_weighted_ever:.4f}")
 
 
 
@@ -761,6 +827,14 @@ def main():
             print(f"[跳过] 未在 MODEL_CONFIGS 中找到配置: {name}")
             continue
         train_one_model(cfg_map[name], df_labels, train_files, val_files)
+
+    # ========== 所有模型训练完成后，自动运行集成评估 ==========
+    print("\n" + "=" * 70)
+    print("所有模型训练完成，开始集成评估...")
+    print("=" * 70)
+    
+    from ensemble_timm import main as ensemble_main
+    ensemble_main()
 
 
 if __name__ == "__main__":

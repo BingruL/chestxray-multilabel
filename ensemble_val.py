@@ -15,14 +15,12 @@ from metrics_utils import compute_metrics, search_best_thresholds
 
 
 # ========== 模型配置 ==========
-# F1 集成：参与所有集成策略的模型
+# F1 集成：参与所有集成策略的模型（对应 train.py 中的 ENSEMBLE_MODELS）
 MODEL_NAMES_FOR_F1 = [
-    "convnext_base_in22k",
-    "vit_base_in21k",
-    "efficientnet_b0_in1k",
-    "densenet121_xrv_pc",
     "densenet121_xrv_chex",
-    # 注意：mimic_nb 和 mimic_ch 已被排除
+    "densenet121_xrv_pc",
+    "densenet121_xrv_mimic_nb",
+    "densenet121_xrv_mimic_ch",
 ]
 
 # AUC 贪婪集成：只用 pc 和 chex
@@ -57,12 +55,9 @@ def evaluate_single_model(name: str):
     auc_t, f1_t, f1_weighted_t = compute_metrics(y_true, y_pred_prob, thresholds)
 
     print(f"\n===== 单模型 [{name}] 评估结果 =====")
-    print(f"Val AUC (thr=0.5):        {auc_macro:.4f}")
-    print(f"Val Macro-F1 (thr=0.5):   {f1_macro:.4f}")
-    print(f"Val Weighted-F1 (thr=0.5):{f1_weighted:.4f}")
-    print(f"Val AUC (best thr):       {auc_t:.4f}")
+    print(f"Val AUC:                 {auc_t:.4f}")
     print(f"Val Macro-F1 (best thr):  {f1_t:.4f}")
-    print(f"Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
+    # print(f"Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
 
     return y_true, y_pred_prob
 
@@ -138,12 +133,9 @@ def evaluate_ensemble(model_names):
         thresholds = search_best_thresholds(y_true, probs)
         auc_t, f1_t, f1_weighted_t = compute_metrics(y_true, probs, thresholds)
         print(f"\n===== 集成结果（{tag}） =====")
-        print(f"Val AUC (thr=0.5):        {auc_macro:.4f}")
-        print(f"Val Macro-F1 (thr=0.5):   {f1_macro:.4f}")
-        print(f"Val Weighted-F1 (thr=0.5):{f1_weighted:.4f}")
-        print(f"Val AUC (best thr):       {auc_t:.4f}")
+        print(f"Val AUC:                 {auc_t:.4f}")
         print(f"Val Macro-F1 (best thr):  {f1_t:.4f}")
-        print(f"Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
+        # print(f"Val Weighted-F1 (best thr):{f1_weighted_t:.4f}")
         return auc_t, f1_t, f1_weighted_t, thresholds, probs
 
     print("\n===== 基线：简单平均 =====")
@@ -165,7 +157,7 @@ def evaluate_ensemble(model_names):
         thresholds=thr_best,
         model_names=np.array(model_names),
     )
-    print(f"\n>>> 最佳集成已保存至 saved_models/val_preds_best_ensemble.npz (Macro-F1={f1_best:.4f}, Weighted-F1={f1_weighted_best:.4f})")
+    print(f"\n>>> 最佳集成已保存至 saved_models/val_preds_best_ensemble.npz (Macro-F1={f1_best:.4f})")
     return best
 
 

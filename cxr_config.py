@@ -31,25 +31,37 @@ CLASS_NAMES = [
 ]
 NUM_CLASSES = len(CLASS_NAMES)
 
-# ====== 训练超参数 ======
+# ====== train.py 训练超参数（DenseNet 系列） ======
 BATCH_SIZE = 48
-# 默认训练轮次提升，支持 warmup 配置
 NUM_EPOCHS = 30
 WARMUP_EPOCHS = 2
 LR = 1e-4
 WEIGHT_DECAY = 1e-4
-# 可选：梯度裁剪与 mixup
 GRAD_CLIP_NORM = 1.0
 MIXUP_ALPHA = 0.2
 USE_EMA = True
-# 早停配置
 EARLY_STOP = True
 EARLY_STOP_PATIENCE = 3
 EARLY_STOP_MIN_DELTA = 0.0
 
+# ====== train_timm_models.py 训练超参数（Timm 模型） ======
+TIMM_BATCH_SIZE = 8
+TIMM_NUM_EPOCHS = 20
+TIMM_WARMUP_EPOCHS = 2
+TIMM_LR = 1e-4
+TIMM_WEIGHT_DECAY = 1e-4
+TIMM_GRAD_CLIP_NORM = 1.0
+TIMM_MIXUP_ALPHA = 0.1
+TIMM_USE_EMA = True
+TIMM_EARLY_STOP = True
+TIMM_EARLY_STOP_PATIENCE = 3
+TIMM_EARLY_STOP_MIN_DELTA = 0.0
+
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 RANDOM_SEED = 42
 VAL_RATIO = 0.1   # 从 21844 张里再划 10% 做验证
+
 
 # ====== Attention-Guided Crop 配置 ======
 # 分辨率设置
