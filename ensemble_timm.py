@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 
 from cxr_config import SAVE_DIR, CLASS_NAMES
 from metrics_utils import compute_metrics, search_best_thresholds
+from log_utils import setup_logger, close_logger
 
 
 # ========== 模型配置 ==========
@@ -298,12 +299,18 @@ def hierarchical_ensemble(
     return best_alpha, best_probs, best_f1, results
 
 
-def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5) -> np.ndarray:
+def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5, C: float = 0.1) -> np.ndarray:
     """
     Logistic Stacking：使用交叉验证避免数据泄露
     
     对每个类别训练一个逻辑回归元分类器，使用 K-Fold 交叉验证
     生成 out-of-fold 预测，避免在同一数据上训练和评估。
+    
+    Args:
+        preds_list: 各模型的预测概率列表
+        y_true: 真实标签
+        n_splits: K-Fold 的折数
+        C: 正则化强度的倒数，值越小正则化越强（默认 0.1，比 sklearn 默认的 1.0 更强）
     """
     from sklearn.model_selection import StratifiedKFold
     
@@ -326,13 +333,59 @@ def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5) -
             oof_preds = np.zeros(n, dtype=np.float32)
             
             for train_idx, val_idx in skf.split(X, y):
-                clf = LogisticRegression(max_iter=500, n_jobs=1, class_weight="balanced")
+                clf = LogisticRegression(
+                    C=C,  # 更强的 L2 正则化
+                    max_iter=500, 
+                    solver='lbfgs',
+                    class_weight="balanced"
+                )
                 clf.fit(X[train_idx], y[train_idx])
                 oof_preds[val_idx] = clf.predict_proba(X[val_idx])[:, 1]
             
             stacked_probs[:, cls] = oof_preds
     
     return stacked_probs
+
+
+def nonneg_stacking(preds_list: list, y_true: np.ndarray) -> tuple:
+    """
+    非负最小二乘 Stacking：约束权重 >= 0，更接近加权平均的物理意义
+    
+    对每个类别独立求解: min ||Xw - y||^2  s.t. w >= 0
+    然后归一化权重，使其和为 1。
+    
+    Args:
+        preds_list: 各模型的预测概率列表
+        y_true: 真实标签
+    
+    Returns:
+        (stacked_probs, weights_per_class): 集成概率和每个类别的权重矩阵
+    """
+    from scipy.optimize import nnls
+    
+    n, c = preds_list[0].shape
+    m = len(preds_list)
+    feats = np.stack(preds_list, axis=0).transpose(1, 2, 0)  # (N, C, M)
+    stacked_probs = np.zeros((n, c), dtype=np.float32)
+    weights_per_class = np.zeros((c, m), dtype=np.float32)  # (C, M)
+    
+    for cls in range(c):
+        X = feats[:, cls, :]  # (N, M)
+        y = y_true[:, cls].astype(np.float64)
+        
+        # 非负最小二乘: min ||Xw - y||^2  s.t. w >= 0
+        weights, _ = nnls(X, y)
+        
+        # 归一化权重
+        if weights.sum() > 0:
+            weights = weights / weights.sum()
+        else:
+            weights = np.ones(m) / m
+        
+        weights_per_class[cls] = weights
+        stacked_probs[:, cls] = X @ weights
+    
+    return stacked_probs, weights_per_class
 
 
 def per_class_weighted_ensemble(preds_list: list, model_aucs: list, temperature=1.0):
@@ -391,6 +444,9 @@ def report_results(tag: str, y_true: np.ndarray, y_pred_prob: np.ndarray):
 
 
 def main():
+    # 设置日志记录，所有 print 输出同时保存到 logs/ 目录
+    setup_logger("ensemble_timm")
+    
     print("=" * 70)
     print("Timm 模型集成评估")
     print("=" * 70)
@@ -469,14 +525,28 @@ def main():
     else:
         print("[跳过] 高分辨率或低分辨率组模型不足")
     
-    # ========== 3. Logistic Stacking ==========
+    # ========== 3. Logistic Stacking (强正则化) ==========
     print("\n" + "=" * 70)
-    print("策略 3: Logistic Stacking")
+    print("策略 3: Logistic Stacking (C=0.1, 强正则化)")
     print("=" * 70)
     
-    ens_stack = logistic_stacking(preds_list, y_true)
-    result_stack = report_results("Logistic Stacking", y_true, ens_stack)
+    ens_stack = logistic_stacking(preds_list, y_true, C=0.1)
+    result_stack = report_results("Logistic Stacking (C=0.1)", y_true, ens_stack)
     all_results.append(result_stack)
+    
+    # ========== 3b. 非负约束 Stacking ==========
+    print("\n" + "=" * 70)
+    print("策略 3b: 非负约束 Stacking (NNLS)")
+    print("=" * 70)
+    
+    ens_nnls, nnls_weights = nonneg_stacking(preds_list, y_true)
+    
+    # 显示每个类别学到的平均权重
+    mean_weights = nnls_weights.mean(axis=0)
+    print(f"NNLS 平均权重: {dict(zip(available_models, mean_weights.round(3)))}")
+    
+    result_nnls = report_results("非负约束 Stacking (NNLS)", y_true, ens_nnls)
+    all_results.append(result_nnls)
     
     # ========== 4. AUC 优化的加权平均 ==========
     print("\n" + "=" * 70)
@@ -588,6 +658,9 @@ def main():
     threshold_path_auc = os.path.join(SAVE_DIR, "timm_ensemble_thresholds_auc.npy")
     np.save(threshold_path_auc, best_auc_result["thresholds"])
     print(f">>> AUC 阈值已保存至: {threshold_path_auc}")
+    
+    # 关闭日志记录
+    close_logger()
 
 
 if __name__ == "__main__":
