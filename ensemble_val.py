@@ -88,25 +88,49 @@ def evaluate_ensemble(model_names):
     stacked = np.stack(preds, axis=0)     # (M, N, C)
     y_pred_mean = stacked.mean(axis=0)     # (N, C)
 
-    # 加权线性融合：简单网格搜索（步长0.1）
-    def search_weighted_average(pred_list, y_true):
+    # 加权线性融合：两阶段网格搜索（步长0.1）
+    def search_weighted_average_two_stage(pred_list, y_true, top_k=50):
+        """
+        两阶段加权搜索：
+        - 阶段 1: 固定阈值 0.5 快速筛选 Top-K
+        - 阶段 2: 对 Top-K 进行阈值搜索
+        """
         m = len(pred_list)
         grid = np.linspace(0.0, 1.0, 11)
-        best_f1 = -1.0
-        best_w = None
+        stacked_preds = np.stack(pred_list, axis=0)
+        
+        # 阶段 1: 粗筛
+        candidates = []
         for weights in itertools.product(grid, repeat=m):
             if sum(weights) == 0:
                 continue
             w = np.array(weights)
             w = w / w.sum()
-            ens = np.tensordot(w, np.stack(pred_list, axis=0), axes=1)
+            ens = np.tensordot(w, stacked_preds, axes=1)
             f1 = compute_metrics(y_true, ens, thresholds=None)[1]
+            candidates.append((f1, w.copy()))
+        
+        # 排序保留 Top-K
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        top_candidates = candidates[:top_k]
+        
+        print(f"\n[阶段 1] Top-{top_k} 粗筛得分: {top_candidates[-1][0]:.4f} ~ {top_candidates[0][0]:.4f}")
+        
+        # 阶段 2: 精选（阈值搜索）
+        best_f1 = -1.0
+        best_w = None
+        for coarse_f1, w in top_candidates:
+            ens = np.tensordot(w, stacked_preds, axes=1)
+            thresholds = search_best_thresholds(y_true, ens)
+            _, f1, _ = compute_metrics(y_true, ens, thresholds)
             if f1 > best_f1:
                 best_f1 = f1
                 best_w = w
+        
+        print(f"[阶段 2] 精选最佳 F1 = {best_f1:.4f}, 提升 = +{best_f1 - top_candidates[0][0]:.4f}")
         return best_w, best_f1
 
-    best_w, best_f1 = search_weighted_average(preds, y_true)
+    best_w, best_f1 = search_weighted_average_two_stage(preds, y_true)
     if best_w is not None:
         print(f"\n>>> 加权平均最佳权重: {best_w}, F1={best_f1:.4f}")
         y_pred_weighted = np.tensordot(best_w, stacked, axes=1)

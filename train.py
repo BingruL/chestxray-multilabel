@@ -625,13 +625,19 @@ def train_single_model(model_name, xrv_weights, df_labels, train_files, val_file
     }
 
 
-def search_ensemble_weights_for_f1(model_results):
+def search_ensemble_weights_for_f1(model_results, top_k=50):
     """
-    搜索最优的集成权重（针对 F1 指标）
-    使用所有模型进行加权平均
+    两阶段搜索最优的集成权重（针对 F1 指标）
+    
+    - 阶段 1: 固定阈值(0.5)快速筛选 Top-K 权重组合
+    - 阶段 2: 对 Top-K 进行阈值搜索，找最优
+    
+    Args:
+        model_results: 各模型的预测结果字典
+        top_k: 阶段 1 保留的候选数量，默认 50（XRV 模型较少，50 足够）
     """
     print(f"\n{'='*60}")
-    print("搜索 F1 最优集成权重（使用所有模型）...")
+    print("搜索 F1 最优集成权重（两阶段策略）...")
     print(f"{'='*60}")
     
     model_names = list(model_results.keys())
@@ -644,17 +650,14 @@ def search_ensemble_weights_for_f1(model_results):
         all_preds.append(model_results[name]["y_pred_prob"])
     all_preds = np.stack(all_preds, axis=0)  # (n_models, n_samples, n_classes)
     
-    # 网格搜索权重
-    best_f1_macro = -1.0
-    best_auc = -1.0
-    best_f1_weighted = -1.0
-    best_weights = None
-    best_ensemble_pred = None
-    
     # 生成权重候选（步长 0.1）
     weight_candidates = np.linspace(0.0, 1.0, 11)
+    total_combinations = len(weight_candidates) ** n_models
     
-    print(f"搜索 {n_models} 个模型的权重组合...")
+    # ========== 阶段 1: 粗筛（固定阈值 0.5）==========
+    print(f"\n[阶段 1] 粗筛: 固定阈值搜索 {total_combinations} 个权重组合...")
+    
+    candidates = []  # 存储 (score, weights) 元组
     
     for weights in itertools.product(weight_candidates, repeat=n_models):
         if sum(weights) == 0:
@@ -665,10 +668,35 @@ def search_ensemble_weights_for_f1(model_results):
         w = w / w.sum()
         
         # 加权平均
-        ensemble_pred = np.tensordot(w, all_preds, axes=1)  # (n_samples, n_classes)
+        ensemble_pred = np.tensordot(w, all_preds, axes=1)
         
-        # 计算指标
-        auc, f1_macro, f1_weighted = compute_metrics(y_true, ensemble_pred, thresholds=None)
+        # 固定阈值 0.5，快速计算
+        _, f1_macro, _ = compute_metrics(y_true, ensemble_pred, thresholds=None)
+        
+        candidates.append((f1_macro, w.copy()))
+    
+    # 按得分排序，保留 Top-K
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    top_candidates = candidates[:top_k]
+    
+    print(f"[阶段 1 完成] Top-{top_k} 粗筛得分范围: {top_candidates[-1][0]:.4f} ~ {top_candidates[0][0]:.4f}")
+    
+    # ========== 阶段 2: 精选（阈值搜索）==========
+    print(f"\n[阶段 2] 精选: 对 Top-{top_k} 候选进行阈值搜索...")
+    
+    best_f1_macro = -1.0
+    best_auc = -1.0
+    best_f1_weighted = -1.0
+    best_weights = None
+    best_ensemble_pred = None
+    best_thresholds = None
+    
+    for coarse_score, w in top_candidates:
+        ensemble_pred = np.tensordot(w, all_preds, axes=1)
+        
+        # 完整阈值搜索
+        thresholds = search_best_thresholds(y_true, ensemble_pred)
+        auc, f1_macro, f1_weighted = compute_metrics(y_true, ensemble_pred, thresholds)
         
         if f1_macro > best_f1_macro:
             best_f1_macro = f1_macro
@@ -676,10 +704,15 @@ def search_ensemble_weights_for_f1(model_results):
             best_auc = auc
             best_weights = w
             best_ensemble_pred = ensemble_pred
+            best_thresholds = thresholds
     
-    # 对最优集成再搜索阈值
-    best_thresholds = search_best_thresholds(y_true, best_ensemble_pred)
-    final_auc, final_f1_macro, final_f1_weighted = compute_metrics(y_true, best_ensemble_pred, best_thresholds)
+    print(f"[阶段 2 完成] 最佳 F1 = {best_f1_macro:.4f}")
+    print(f"  粗筛最佳 (thr=0.5) = {top_candidates[0][0]:.4f}")
+    print(f"  精选提升 = +{best_f1_macro - top_candidates[0][0]:.4f}")
+    
+    # 同时记录阈值=0.5时的指标（用于对比）
+    ensemble_pred_best = np.tensordot(best_weights, all_preds, axes=1)
+    auc_thr05, f1_macro_thr05, f1_weighted_thr05 = compute_metrics(y_true, ensemble_pred_best, thresholds=None)
     
     return {
         "weights": best_weights,
@@ -687,12 +720,12 @@ def search_ensemble_weights_for_f1(model_results):
         "y_true": y_true,
         "y_pred_prob": best_ensemble_pred,
         "thresholds": best_thresholds,
-        "auc_thr05": best_auc,
-        "f1_macro_thr05": best_f1_macro,
-        "f1_weighted_thr05": best_f1_weighted,
-        "auc_best_thr": final_auc,
-        "f1_macro_best_thr": final_f1_macro,
-        "f1_weighted_best_thr": final_f1_weighted,
+        "auc_thr05": auc_thr05,
+        "f1_macro_thr05": f1_macro_thr05,
+        "f1_weighted_thr05": f1_weighted_thr05,
+        "auc_best_thr": best_auc,
+        "f1_macro_best_thr": best_f1_macro,
+        "f1_weighted_best_thr": best_f1_weighted,
     }
 
 
