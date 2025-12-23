@@ -170,6 +170,12 @@ class ModelEma:
         self.ema.to(device)
         return self
 
+    def state_dict(self):
+        return self.ema.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.ema.load_state_dict(state_dict)
+
 
 def prepare_data():
     """准备数据集，返回 df_labels, train_files, val_files"""
