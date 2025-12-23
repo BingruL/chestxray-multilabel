@@ -307,7 +307,6 @@ def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5) -
     """
     from sklearn.model_selection import StratifiedKFold
     
-    m = len(preds_list)
     n, c = preds_list[0].shape
     
     feats = np.stack(preds_list, axis=0).transpose(1, 2, 0)  # (N, C, M)
@@ -336,11 +335,17 @@ def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5) -
     return stacked_probs
 
 
-def per_class_weighted_ensemble(preds_list: list, model_aucs: list, y_true: np.ndarray, temperature=1.0):
+def per_class_weighted_ensemble(preds_list: list, model_aucs: list, temperature=1.0):
     """
     Per-class 自适应权重集成：根据每个模型在每个类别上的 AUC 分配权重
     
-    model_aucs: list of (M,) arrays，每个模型的 per-class AUC
+    Args:
+        preds_list: 各模型的预测概率列表，每个元素 shape=(N, C)
+        model_aucs: 各模型的 per-class AUC 列表，每个元素 shape=(C,)
+        temperature: softmax 温度参数，越大权重越均匀
+    
+    Returns:
+        (集成概率, 权重矩阵)
     """
     m = len(preds_list)
     n, c = preds_list[0].shape
@@ -514,7 +519,7 @@ def main():
     
     for temp in [0.5, 1.0, 2.0]:
         ens_perclass, weights_matrix = per_class_weighted_ensemble(
-            preds_list, model_per_class_aucs, y_true, temperature=temp
+            preds_list, model_per_class_aucs, temperature=temp
         )
         thresholds = search_best_thresholds(y_true, ens_perclass)
         _, f1_macro, _ = compute_metrics(y_true, ens_perclass, thresholds)
