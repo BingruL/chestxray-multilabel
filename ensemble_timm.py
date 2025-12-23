@@ -155,19 +155,18 @@ def simple_average_ensemble(preds_list: list) -> np.ndarray:
 #     return ens_prob, best_weights, best_score
 
 
-def weighted_average_ensemble(preds_list: list, y_true: np.ndarray, metric="f1", top_k=100):
+def weighted_average_ensemble(preds_list: list, y_true: np.ndarray, metric="f1", top_k=150):
     """
-    两阶段加权平均集成（快速版本）：
+    三阶段加权平均集成：
     - 阶段 1: 固定阈值(0.5)快速筛选 Top-K 权重组合
     - 阶段 2: 对 Top-K 进行阈值搜索，找最优
-    
-    相比原始版本，速度提升约 200 倍（10小时 -> 25分钟）
+    - 阶段 3: 在最佳权重附近进行局部精调
     
     Args:
         preds_list: 各模型的预测概率列表
         y_true: 真实标签
         metric: 'f1' 或 'auc'，用于优化的指标
-        top_k: 阶段 1 保留的候选数量，默认 100
+        top_k: 阶段 1 保留的候选数量，默认 150
     
     Returns:
         (集成概率, 最佳权重, 最佳得分)
@@ -218,33 +217,82 @@ def weighted_average_ensemble(preds_list: list, y_true: np.ndarray, metric="f1",
     print(f"\n[阶段 1 完成] Top-{top_k} 粗筛得分范围: {top_candidates[-1][0]:.4f} ~ {top_candidates[0][0]:.4f}")
     
     # ========== 阶段 2: 精选（阈值搜索）==========
-    # 对于 AUC 指标，阈值搜索不影响结果，直接返回阶段 1 的最佳
+    # 对于 AUC 指标，阈值搜索不影响结果，直接跳到阶段 3
     if metric == "auc":
-        best_weights = top_candidates[0][1]
-        best_score = top_candidates[0][0]
-        ens_prob = np.tensordot(best_weights, stacked_preds, axes=1)
-        print(f"[AUC 模式] 与阈值无关，无需阶段 2，最佳 AUC = {best_score:.4f}")
-        return ens_prob, best_weights, best_score
+        stage2_best_weights = top_candidates[0][1]
+        stage2_best_score = top_candidates[0][0]
+        print(f"[AUC 模式] 与阈值无关，跳过阶段 2，当前最佳 AUC = {stage2_best_score:.4f}")
+    else:
+        print(f"\n[阶段 2] 精选: 对 Top-{top_k} 候选进行阈值搜索...")
+        
+        stage2_best_score = -1.0
+        stage2_best_weights = None
+        
+        for i, (coarse_score, w) in enumerate(tqdm(top_candidates, desc="阶段 2: 精选")):
+            ens_prob = np.tensordot(w, stacked_preds, axes=1)
+            
+            # 完整阈值搜索
+            thresholds = search_best_thresholds(y_true, ens_prob)
+            _, score, _ = compute_metrics(y_true, ens_prob, thresholds)
+            
+            if score > stage2_best_score:
+                stage2_best_score = score
+                stage2_best_weights = w
+        
+        print(f"\n[阶段 2 完成] 最佳 F1 = {stage2_best_score:.4f}")
+        print(f"  粗筛最佳 (thr=0.5) = {top_candidates[0][0]:.4f}")
+        print(f"  精选提升 = +{stage2_best_score - top_candidates[0][0]:.4f}")
     
-    print(f"\n[阶段 2] 精选: 对 Top-{top_k} 候选进行阈值搜索...")
+    # ========== 阶段 3: 局部精调 ==========
+    fine_grid = np.linspace(-0.03, 0.03, 7)  # [-0.03, -0.02, -0.01, 0, 0.01, 0.02, 0.03]
+    fine_combinations = len(fine_grid) ** m  # 7^5 = 16,807
     
-    best_score = -1.0
-    best_weights = None
+    print(f"\n[阶段 3] 局部精调: 在最佳权重 ±0.03 范围内搜索 {fine_combinations} 个组合...")
     
-    for i, (coarse_score, w) in enumerate(tqdm(top_candidates, desc="阶段 2: 精选")):
+    best_score = stage2_best_score
+    best_weights = stage2_best_weights.copy()
+    
+    pbar = tqdm(
+        itertools.product(fine_grid, repeat=m),
+        total=fine_combinations,
+        desc=f"阶段 3: 局部精调",
+    )
+    
+    improved_count = 0
+    for offsets in pbar:
+        # 在阶段 2 最佳权重基础上加偏移
+        w = stage2_best_weights + np.array(offsets)
+        
+        # 裁剪到 [0, 1] 范围
+        w = np.clip(w, 0, 1)
+        
+        # 跳过全零权重
+        if w.sum() == 0:
+            continue
+        
+        # 归一化
+        w = w / w.sum()
+        
+        # 计算集成概率
         ens_prob = np.tensordot(w, stacked_preds, axes=1)
         
-        # 完整阈值搜索
-        thresholds = search_best_thresholds(y_true, ens_prob)
-        _, score, _ = compute_metrics(y_true, ens_prob, thresholds)
+        # 计算分数
+        if metric == "f1":
+            thresholds = search_best_thresholds(y_true, ens_prob)
+            _, score, _ = compute_metrics(y_true, ens_prob, thresholds)
+        else:  # auc
+            score, _, _ = compute_metrics(y_true, ens_prob, thresholds=None)
         
         if score > best_score:
             best_score = score
-            best_weights = w
+            best_weights = w.copy()
+            improved_count += 1
+            pbar.set_postfix({"best": f"{best_score:.4f}", "improved": improved_count})
     
-    print(f"\n[阶段 2 完成] 最佳 F1 = {best_score:.4f}")
-    print(f"  粗筛最佳 (thr=0.5) = {top_candidates[0][0]:.4f}")
-    print(f"  精选提升 = +{best_score - top_candidates[0][0]:.4f}")
+    print(f"\n[阶段 3 完成] 最佳 {metric.upper()} = {best_score:.4f}")
+    print(f"  阶段 2 最佳 = {stage2_best_score:.4f}")
+    print(f"  局部精调提升 = +{best_score - stage2_best_score:.4f}")
+    print(f"  共找到 {improved_count} 个更优权重组合")
     
     # 返回最终结果
     ens_prob = np.tensordot(best_weights, stacked_preds, axes=1)
