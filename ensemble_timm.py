@@ -255,26 +255,63 @@ def hierarchical_ensemble(
     high_res_preds: list,
     low_res_preds: list,
     y_true: np.ndarray,
+    high_res_scores: list = None,
+    low_res_scores: list = None,
     alpha_candidates=None,
 ):
     """
     分层加权集成：高分辨率组 vs 低分辨率组
     
-    ensemble = α × mean(高分辨率组) + (1-α) × mean(低分辨率组)
+    改进版：组内按模型性能加权平均，组间搜索最优 alpha
     
-    返回: (best_alpha, best_probs, best_f1, search_results)
+    ensemble = α × weighted_mean(高分辨率组) + (1-α) × weighted_mean(低分辨率组)
+    
+    Args:
+        high_res_preds: 高分辨率组模型的预测概率列表
+        low_res_preds: 低分辨率组模型的预测概率列表
+        y_true: 真实标签
+        high_res_scores: 高分辨率组模型的性能分数（如 AUC），用于组内加权
+        low_res_scores: 低分辨率组模型的性能分数
+        alpha_candidates: alpha 候选值列表
+    
+    返回: (best_alpha, best_probs, best_f1, search_results, group_weights)
     """
     if alpha_candidates is None:
         alpha_candidates = np.linspace(0.0, 1.0, 21)  # 0.0, 0.05, ..., 1.0
     
-    # 计算每组的平均概率
-    high_res_mean = np.stack(high_res_preds, axis=0).mean(axis=0) if high_res_preds else None
-    low_res_mean = np.stack(low_res_preds, axis=0).mean(axis=0) if low_res_preds else None
+    def weighted_mean(preds, scores=None):
+        """组内加权平均：按性能分数加权，若无分数则简单平均"""
+        if not preds:
+            return None, None
+        
+        stacked = np.stack(preds, axis=0)  # (M, N, C)
+        
+        if scores is None or len(scores) == 0:
+            # 无分数信息，使用简单平均
+            weights = np.ones(len(preds)) / len(preds)
+        else:
+            # 按性能分数加权（归一化）
+            weights = np.array(scores, dtype=np.float32)
+            weights = weights / weights.sum()
+        
+        # 加权平均
+        result = np.tensordot(weights, stacked, axes=1)  # (N, C)
+        return result, weights
+    
+    # 计算每组的加权平均概率
+    high_res_mean, high_weights = weighted_mean(high_res_preds, high_res_scores)
+    low_res_mean, low_weights = weighted_mean(low_res_preds, low_res_scores)
+    
+    # 保存组内权重信息
+    group_weights = {
+        "high_res": high_weights,
+        "low_res": low_weights,
+    }
     
     if high_res_mean is None:
-        return 0.0, low_res_mean, -1.0, []  # 只有低分辨率组，无搜索结果
+        return 0.0, low_res_mean, -1.0, [], group_weights
     if low_res_mean is None:
-        return 1.0, high_res_mean, -1.0, []  # 只有高分辨率组，无搜索结果
+        return 1.0, high_res_mean, -1.0, [], group_weights
     
     best_alpha = 0.5
     best_f1 = -1.0
@@ -296,7 +333,7 @@ def hierarchical_ensemble(
             best_alpha = alpha
             best_probs = ens_prob
     
-    return best_alpha, best_probs, best_f1, results
+    return best_alpha, best_probs, best_f1, results, group_weights
 
 
 def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5, C: float = 0.1) -> np.ndarray:
@@ -495,24 +532,37 @@ def main():
     result_weighted = report_results("加权平均", y_true, ens_weighted)
     all_results.append(result_weighted)
     
-    # ========== 2. 分层加权集成 ==========
+    # ========== 2. 分层加权集成（组内按性能加权）==========
     print("\n" + "=" * 70)
-    print("策略 2: 分层加权（高分辨率 vs 低分辨率）")
+    print("策略 2: 分层加权（高分辨率 vs 低分辨率，组内按AUC加权）")
     print("=" * 70)
     
-    # 分离高分辨率和低分辨率模型的预测
-    high_res_preds = [model_results[name]["y_pred_prob"] 
-                      for name in HIGH_RES_MODELS if name in available_models]
-    low_res_preds = [model_results[name]["y_pred_prob"] 
-                     for name in LOW_RES_MODELS if name in available_models]
+    # 分离高分辨率和低分辨率模型的预测及其性能分数
+    high_res_names = [n for n in HIGH_RES_MODELS if n in available_models]
+    low_res_names = [n for n in LOW_RES_MODELS if n in available_models]
+    
+    high_res_preds = [model_results[name]["y_pred_prob"] for name in high_res_names]
+    low_res_preds = [model_results[name]["y_pred_prob"] for name in low_res_names]
+    
+    # 获取每个模型的 AUC 分数作为组内权重依据
+    high_res_scores = [model_results[name]["auc"] for name in high_res_names]
+    low_res_scores = [model_results[name]["auc"] for name in low_res_names]
     
     if high_res_preds and low_res_preds:
-        best_alpha, ens_hier, best_f1, search_results = hierarchical_ensemble(
-            high_res_preds, low_res_preds, y_true
+        best_alpha, ens_hier, best_f1, search_results, group_weights = hierarchical_ensemble(
+            high_res_preds, low_res_preds, y_true,
+            high_res_scores=high_res_scores,
+            low_res_scores=low_res_scores,
         )
         
-        print(f"高分辨率组模型: {[n for n in HIGH_RES_MODELS if n in available_models]}")
-        print(f"低分辨率组模型: {[n for n in LOW_RES_MODELS if n in available_models]}")
+        print(f"高分辨率组模型: {high_res_names}")
+        print(f"  组内 AUC: {[f'{s:.4f}' for s in high_res_scores]}")
+        print(f"  组内权重: {dict(zip(high_res_names, group_weights['high_res'].round(3)))}")
+        
+        print(f"\n低分辨率组模型: {low_res_names}")
+        print(f"  组内 AUC: {[f'{s:.4f}' for s in low_res_scores]}")
+        print(f"  组内权重: {dict(zip(low_res_names, group_weights['low_res'].round(3)))}")
+        
         print(f"\n分层权重搜索结果 (α = 高分辨率组权重):")
         print("-" * 45)
         for alpha, f1 in search_results:
