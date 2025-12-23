@@ -456,6 +456,92 @@ def per_class_weighted_ensemble(preds_list: list, model_aucs: list, temperature=
     return ens_prob, weights
 
 
+def per_class_f1_optimized_ensemble(preds_list: list, y_true: np.ndarray, model_names: list = None):
+    """
+    Per-class F1 直接优化集成：对每个类别独立搜索使 F1 最大的权重组合
+    
+    相比基于 AUC 的间接方法，此方法直接优化目标指标（F1），
+    能找到真正使 F1 最大的权重组合。
+    
+    Args:
+        preds_list: 各模型的预测概率列表，每个元素 shape=(N, C)
+        y_true: 真实标签 shape=(N, C)
+        model_names: 模型名称列表（用于日志输出）
+    
+    Returns:
+        (集成概率, 权重矩阵, per_class_info)
+    """
+    from scipy.optimize import minimize
+    from sklearn.metrics import f1_score
+    
+    m = len(preds_list)
+    n, c = preds_list[0].shape
+    
+    stacked = np.stack(preds_list, axis=0)  # (M, N, C)
+    ens_prob = np.zeros((n, c), dtype=np.float32)
+    weights_matrix = np.zeros((c, m), dtype=np.float32)  # (C, M)
+    per_class_info = []  # 存储每个类别的优化信息
+    
+    for cls in range(c):
+        preds_cls = stacked[:, :, cls].T  # (N, M) - 每列是一个模型的预测
+        y_cls = y_true[:, cls]
+        
+        # 检查是否有足够的正负样本
+        if y_cls.sum() < 2 or (1 - y_cls).sum() < 2:
+            # 样本太少，使用简单平均
+            weights = np.ones(m) / m
+            best_f1 = 0.0
+        else:
+            def objective(w):
+                """目标函数：最小化负 F1"""
+                # 确保权重非负并归一化
+                w_abs = np.abs(w)
+                if w_abs.sum() == 0:
+                    w_abs = np.ones(m) / m
+                else:
+                    w_abs = w_abs / w_abs.sum()
+                
+                # 计算加权集成概率
+                prob = preds_cls @ w_abs
+                
+                # 使用 0.5 作为固定阈值计算 F1（加速优化）
+                y_pred = (prob > 0.5).astype(int)
+                f1 = f1_score(y_cls, y_pred, zero_division=0)
+                
+                return -f1  # 最小化负 F1
+            
+            # 使用 Nelder-Mead 优化（无需梯度，适合小规模问题）
+            # 初始值：均匀分布
+            x0 = np.ones(m) / m
+            
+            result = minimize(
+                objective, 
+                x0, 
+                method='Nelder-Mead',
+                options={'maxiter': 500, 'xatol': 1e-4, 'fatol': 1e-4}
+            )
+            
+            # 获取最优权重
+            weights = np.abs(result.x)
+            if weights.sum() > 0:
+                weights = weights / weights.sum()
+            else:
+                weights = np.ones(m) / m
+            
+            best_f1 = -result.fun
+        
+        weights_matrix[cls] = weights
+        ens_prob[:, cls] = preds_cls @ weights
+        
+        per_class_info.append({
+            'class_idx': cls,
+            'weights': weights.copy(),
+            'f1': best_f1,
+        })
+    
+    return ens_prob, weights_matrix, per_class_info
+
+
 def report_results(tag: str, y_true: np.ndarray, y_pred_prob: np.ndarray):
     """报告集成结果"""
     # 阈值=0.5
@@ -610,49 +696,51 @@ def main():
     result_auc_opt = report_results("加权平均 (AUC优化)", y_true, ens_auc_opt)
     all_results.append(result_auc_opt)
     
-    # ========== 5. Per-class 自适应权重集成 ==========
+    # ========== 5. Per-class F1 直接优化集成（仅高分辨率模型）==========
     print("\n" + "=" * 70)
-    print("策略 5: Per-class 自适应权重（基于各模型在每类上的 AUC）")
+    print("策略 5: Per-class F1 直接优化（仅高分辨率模型: 3,4,5）")
     print("=" * 70)
     
-    # 计算每个模型的 per-class AUC
-    from sklearn.metrics import roc_auc_score
-    model_per_class_aucs = []
-    num_classes = y_true.shape[1]
+    # 只使用高分辨率模型（剔除 AUC 较低的前两个模型）
+    selected_models = [n for n in HIGH_RES_MODELS if n in available_models]
     
-    print("\n各模型 Per-class AUC:")
-    for name in available_models:
-        y_pred = model_results[name]["y_pred_prob"]
-        per_class_auc = np.zeros(num_classes, dtype=np.float32)
-        for c in range(num_classes):
-            try:
-                per_class_auc[c] = roc_auc_score(y_true[:, c], y_pred[:, c])
-            except ValueError:
-                per_class_auc[c] = 0.5  # 如果某类只有单一标签，默认 0.5
-        model_per_class_aucs.append(per_class_auc)
-        print(f"  {name}: mean={per_class_auc.mean():.4f}, min={per_class_auc.min():.4f}, max={per_class_auc.max():.4f}")
-    
-    # 尝试不同的 temperature 参数
-    best_temp = 1.0
-    best_temp_f1 = -1.0
-    best_temp_result = None
-    
-    for temp in [0.5, 1.0, 2.0]:
-        ens_perclass, weights_matrix = per_class_weighted_ensemble(
-            preds_list, model_per_class_aucs, temperature=temp
-        )
-        thresholds = search_best_thresholds(y_true, ens_perclass)
-        _, f1_macro, _ = compute_metrics(y_true, ens_perclass, thresholds)
+    if len(selected_models) >= 2:
+        selected_preds = [model_results[name]["y_pred_prob"] for name in selected_models]
         
-        if f1_macro > best_temp_f1:
-            best_temp_f1 = f1_macro
-            best_temp = temp
-            best_temp_result = (ens_perclass, weights_matrix)
-    
-    print(f"\n最佳 temperature = {best_temp}")
-    ens_perclass, weights_matrix = best_temp_result
-    result_perclass = report_results(f"Per-class 自适应 (T={best_temp})", y_true, ens_perclass)
-    all_results.append(result_perclass)
+        print(f"\n选用模型（高分辨率组）:")
+        for name in selected_models:
+            auc = model_results[name]["auc"]
+            f1 = model_results[name]["f1_macro"]
+            print(f"  {name}: AUC={auc:.4f}, F1={f1:.4f}")
+        
+        print(f"\n正在对 {len(selected_models)} 个模型进行 Per-class F1 直接优化...")
+        
+        # 使用新的 F1 直接优化方法
+        ens_perclass, weights_matrix, per_class_info = per_class_f1_optimized_ensemble(
+            selected_preds, y_true, model_names=selected_models
+        )
+        
+        # 显示每个类别学到的权重（汇总）
+        print(f"\nPer-class 优化权重汇总:")
+        print(f"  模型: {selected_models}")
+        
+        mean_weights = weights_matrix.mean(axis=0)
+        std_weights = weights_matrix.std(axis=0)
+        print(f"  平均权重: {dict(zip(selected_models, mean_weights.round(3)))}")
+        print(f"  权重标准差: {dict(zip(selected_models, std_weights.round(3)))}")
+        
+        # 显示权重分布极端的类别
+        print(f"\n权重分配特殊的类别（某模型权重 > 0.6）:")
+        for info in per_class_info:
+            max_w = info['weights'].max()
+            if max_w > 0.6:
+                max_idx = info['weights'].argmax()
+                print(f"  类别 {info['class_idx']}: {selected_models[max_idx]} 权重={max_w:.3f}, F1={info['f1']:.4f}")
+        
+        result_perclass = report_results("Per-class F1优化 (高分辨率)", y_true, ens_perclass)
+        all_results.append(result_perclass)
+    else:
+        print(f"[跳过] 高分辨率模型不足（需要至少 2 个，当前 {len(selected_models)} 个）")
     
     # ========== 6. 汇总与保存结果 ==========
     print("\n" + "=" * 70)
