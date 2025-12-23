@@ -473,6 +473,37 @@ def nonneg_stacking(preds_list: list, y_true: np.ndarray) -> tuple:
     return stacked_probs, weights_per_class
 
 
+def rank_average_ensemble(preds_list: list) -> np.ndarray:
+    """
+    Rank Averaging 集成：基于排名的集成方法
+    
+    将每个模型的预测概率转换为排名，消除不同模型概率尺度的差异，
+    然后对排名进行平均。这种方法对概率校准不敏感。
+    
+    Args:
+        preds_list: 各模型的预测概率列表，每个元素 shape=(N, C)
+    
+    Returns:
+        集成后的概率（实际是归一化的平均排名）
+    """
+    from scipy.stats import rankdata
+    
+    n, c = preds_list[0].shape
+    
+    # 对每个模型的每个类别转换为排名
+    ranked_preds = []
+    for probs in preds_list:
+        ranked = np.zeros_like(probs, dtype=np.float32)
+        for cls in range(c):
+            # rankdata 返回 1-based 排名，除以 n 归一化到 (0, 1]
+            ranked[:, cls] = rankdata(probs[:, cls]) / n
+        ranked_preds.append(ranked)
+    
+    # 对排名进行简单平均
+    stacked = np.stack(ranked_preds, axis=0)  # (M, N, C)
+    return stacked.mean(axis=0)  # (N, C)
+
+
 def per_class_weighted_ensemble(preds_list: list, model_aucs: list, temperature=1.0):
     """
     Per-class 自适应权重集成：根据每个模型在每个类别上的 AUC 分配权重
@@ -744,7 +775,7 @@ def main():
     result_auc_opt = report_results("加权平均 (AUC优化)", y_true, ens_auc_opt)
     all_results.append(result_auc_opt)
     
-    # ========== 5. Per-class F1 直接优化集成（仅高分辨率模型）==========
+    # ========== 5. Per-class F1 直接优化集成 ==========
     print("\n" + "=" * 70)
     print("策略 5: Per-class F1 直接优化（仅高分辨率模型: 3,4,5）")
     print("=" * 70)
@@ -790,7 +821,17 @@ def main():
     else:
         print(f"[跳过] 高分辨率模型不足（需要至少 2 个，当前 {len(selected_models)} 个）")
     
-    # ========== 6. 汇总与保存结果 ==========
+    # ========== 6. Rank Averaging 集成 ==========
+    print("\n" + "=" * 70)
+    print("策略 6: Rank Averaging（基于排名的集成）")
+    print("=" * 70)
+    
+    print("将每个模型的预测概率转换为排名后平均，消除概率尺度差异...")
+    ens_rank = rank_average_ensemble(preds_list)
+    result_rank = report_results("Rank Averaging", y_true, ens_rank)
+    all_results.append(result_rank)
+    
+    # ========== 7. 汇总与保存结果 ==========
     print("\n" + "=" * 70)
     print("集成策略汇总")
     print("=" * 70)
