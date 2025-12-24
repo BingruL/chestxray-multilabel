@@ -1,0 +1,40 @@
+# ChestX-ray14 Multi-label Classification
+# Conda environment configuration
+# Usage: conda env create -f environment.yml
+#        conda activate chestxray
+
+name: chestxray
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python version
+  - python>=3.9
+
+  # PyTorch ecosystem (CUDA 12.1)
+  - pytorch>=2.0.0
+  - torchvision>=0.15.0
+  - pytorch-cuda=12.1
+
+  # Data Processing
+  - numpy>=1.24.0
+  - pandas>=2.0.0
+  - pillow>=9.0.0
+  - opencv>=4.7.0
+
+  # Machine Learning
+  - scikit-learn>=1.2.0
+
+  # Utilities
+  - tqdm>=4.65.0
+
+  # pip dependencies (packages not available in conda or better installed via pip)
+  - pip
+  - pip:
+    - timm>=0.9.0
+    - torchxrayvision>=1.2.0
+

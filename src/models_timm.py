@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import timm
 
-from cxr_config import NUM_CLASSES
+from src.cxr_config import NUM_CLASSES
 
 
 def _strip_module_prefix(state_dict):

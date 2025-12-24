@@ -3,14 +3,13 @@
 import os
 from typing import List, Optional
 
-import numpy as np
 import pandas as pd
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as T
 
-from cxr_config import CLASS_NAMES, NUM_CLASSES, IMAGES_DIR, LABEL_CSV
+from src.cxr_config import CLASS_NAMES, NUM_CLASSES, IMAGES_DIR, LABEL_CSV
 
 
 def get_transforms(train: bool = True, use_jitter: bool = False, sharpness: float = 0.0):

@@ -10,8 +10,9 @@ import itertools
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-from cxr_config import SAVE_DIR, CLASS_NAMES
-from metrics_utils import compute_metrics, search_best_thresholds
+from src.cxr_config import SAVE_DIR
+from src.metrics_utils import compute_metrics, search_best_thresholds
+from src.log_utils import setup_logger, close_logger
 
 
 # ========== 模型配置 ==========
@@ -269,6 +270,9 @@ def search_auc_greedy_ensemble(pc_name="densenet121_xrv_pc", chex_name="densenet
 
 
 def main():
+    # 设置日志记录，所有 print 输出同时保存到 logs/ 目录
+    setup_logger("ensemble_xrv")
+    
     print("SAVE_DIR =", SAVE_DIR)
     
     # ========== Part 1: F1 集成（使用所有模型） ==========
@@ -318,6 +322,9 @@ def main():
     print("F1 计算: 使用所有模型的加权平均/Logistic Stacking")
     print("AUC 计算: 使用 PC + CheXpert 的最佳比例融合")
     print("=" * 60)
+    
+    # 关闭日志记录
+    close_logger()
 
 
 if __name__ == "__main__":

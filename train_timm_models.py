@@ -27,11 +27,10 @@ GradScaler = amp.GradScaler
 
 import torch
 from torch.utils.data import DataLoader
-import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 
-from cxr_config import (
+from src.cxr_config import (
     LABEL_CSV, IMAGES_DIR, SAVE_DIR,
     DEVICE, RANDOM_SEED, VAL_RATIO, CLASS_NAMES,
     # Timm 模型专用配置
@@ -47,18 +46,18 @@ from cxr_config import (
     TIMM_EARLY_STOP_PATIENCE as EARLY_STOP_PATIENCE,
     TIMM_EARLY_STOP_MIN_DELTA as EARLY_STOP_MIN_DELTA,
 )
-from dataset import ChestXrayDataset, ChestXrayMultiResDatasetV2
-from metrics_utils import compute_metrics, search_best_thresholds
-from models_timm import TimmMultiLabelModel
-from models_attention_crop import wrap_model_with_attention_crop
-from loss_utils import (
+from src.dataset import ChestXrayDataset, ChestXrayMultiResDatasetV2
+from src.metrics_utils import compute_metrics, search_best_thresholds
+from src.models_timm import TimmMultiLabelModel
+from src.models_attention_crop import wrap_model_with_attention_crop
+from src.loss_utils import (
     compute_pos_weight,
     HybridLoss,
     AsymmetricLoss,
     LogitAdjustedLoss,
     get_logit_adjustment,
 )
-from log_utils import setup_logger, close_logger
+from src.log_utils import setup_logger, close_logger
 
 
 
@@ -402,7 +401,7 @@ def build_loss(df_labels, stage: int = 1):
             print(f"  [Stage 2 Loss] LogitAdjustedLoss")
             return LogitAdjustedLoss(logit_bias=logit_bias)
         elif STAGE2_LOSS == "focal":
-            from loss_utils import MultiLabelFocalLoss
+            from src.loss_utils import MultiLabelFocalLoss
             print(f"  [Stage 2 Loss] Focal Loss")
             return MultiLabelFocalLoss(gamma=2.0)
         else:
@@ -837,7 +836,7 @@ def main():
     print("所有模型训练完成，开始集成评估...")
     print("=" * 70)
     
-    from ensemble_timm import main as ensemble_main
+    from scripts.ensemble_timm import main as ensemble_main
     ensemble_main()
     
     # 关闭日志记录

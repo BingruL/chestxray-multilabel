@@ -11,15 +11,16 @@ import os
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-from cxr_config import SAVE_DIR
-from metrics_utils import compute_metrics
+from src.cxr_config import SAVE_DIR
+from src.metrics_utils import compute_metrics
+from src.log_utils import setup_logger, close_logger
 
 
 # 这里写上你已经训练过、并且在 saved_models 下能找到 val_preds_*.npz 的模型名字
 MODEL_NAMES = [
-    "convnext_base_in22k",
-    "vit_base_in21k",
-    "efficientnet_b0_in1k",
+    #"convnext_base_in22k",
+    #"vit_base_in21k",
+    #"efficientnet_b0_in1k",
     # 根据实际训练情况加减
 ]
 
@@ -31,6 +32,9 @@ def load_val_preds(name):
 
 
 def main():
+    # 设置日志记录，所有 print 输出同时保存到 logs/ 目录
+    setup_logger("ensemble_search")
+    
     preds = {}
     y_true_ref = None
 
@@ -133,6 +137,9 @@ def main():
                  y_true=y_true_ref,
                  y_pred_prob=best_probs)
         print(f"已将最优集成的验证集预测保存到 saved_models/val_preds_best_ensemble.npz")
+    
+    # 关闭日志记录
+    close_logger()
 
 
 if __name__ == "__main__":

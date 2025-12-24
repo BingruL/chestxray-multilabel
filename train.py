@@ -20,30 +20,28 @@ from tqdm import tqdm
 
 import torch
 from torch.utils.data import DataLoader
-import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR
 from copy import deepcopy
 
-from cxr_config import (
+from src.cxr_config import (
     LABEL_CSV, SAVE_DIR, IMAGES_DIR,
     DEVICE, RANDOM_SEED,
     BATCH_SIZE, NUM_EPOCHS, WARMUP_EPOCHS, LR, WEIGHT_DECAY, VAL_RATIO, CLASS_NAMES,
     MIXUP_ALPHA, GRAD_CLIP_NORM, USE_EMA,
-    EARLY_STOP, EARLY_STOP_PATIENCE, EARLY_STOP_MIN_DELTA,
-)
-from dataset import ChestXrayDataset, get_transforms, get_xrv_transforms, ChestXrayMultiResDatasetV2
-from models import DenseNetMultiLabel, TorchXRayVisionDenseNet
-from models_attention_crop import AttentionGuidedWrapper, wrap_model_with_attention_crop
-from metrics_utils import compute_metrics, search_best_thresholds
-from loss_utils import (
+    EARLY_STOP, EARLY_STOP_PATIENCE, )
+from src.dataset import ChestXrayDataset, get_xrv_transforms, ChestXrayMultiResDatasetV2
+from src.models import TorchXRayVisionDenseNet
+from src.models_attention_crop import wrap_model_with_attention_crop
+from src.metrics_utils import compute_metrics, search_best_thresholds
+from src.loss_utils import (
     compute_pos_weight,
     HybridLoss,
     AsymmetricLoss,
     LogitAdjustedLoss,
     get_logit_adjustment,
 )
-from log_utils import setup_logger, close_logger
+from src.log_utils import setup_logger, close_logger
 
 
 # ================== 集成学习配置 ==================
@@ -261,7 +259,7 @@ def build_criterion(df_labels, model_name=None, stage: int = 1):
             print(f"  [Stage 2 Loss] LogitAdjustedLoss (tau=1.0)")
             return LogitAdjustedLoss(logit_bias=logit_bias)
         elif STAGE2_LOSS == "focal":
-            from loss_utils import MultiLabelFocalLoss
+            from src.loss_utils import MultiLabelFocalLoss
             print(f"  [Stage 2 Loss] Focal Loss (gamma=2.0)")
             return MultiLabelFocalLoss(gamma=2.0)
         else:

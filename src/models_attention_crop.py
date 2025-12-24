@@ -492,7 +492,7 @@ def wrap_model_with_attention_crop(
         包装后的模型
         
     Example:
-        >>> from models import TorchXRayVisionDenseNet
+        >>> from src.models import TorchXRayVisionDenseNet
         >>> base_model = TorchXRayVisionDenseNet(num_classes=14, weights="...")
         >>> ag_model = wrap_model_with_attention_crop(base_model, backbone_type="xrv")
     """
@@ -565,7 +565,7 @@ if __name__ == "__main__":
     # 测试包装 XRV 模型
     print("测试 AttentionGuidedWrapper...")
     
-    from models import TorchXRayVisionDenseNet
+    from src.models import TorchXRayVisionDenseNet
     
     # 创建基础模型
     base_model = TorchXRayVisionDenseNet(

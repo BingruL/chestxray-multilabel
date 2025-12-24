@@ -18,7 +18,7 @@
 import os
 import sys
 from datetime import datetime
-from cxr_config import LOGS_DIR
+from src.cxr_config import LOGS_DIR
 
 
 class TeeLogger:

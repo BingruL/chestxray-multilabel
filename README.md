@@ -36,35 +36,49 @@
 chestxray_multilabel/
 ├── train.py                    # XRV 模型集成训练（DenseNet121）
 ├── train_timm_models.py        # timm 模型训练（ConvNeXt, ViT, EfficientNet）
-├── train_attention_crop.py     # Attention-Guided Crop 便捷入口
 │
-├── models.py                   # 模型定义（DenseNet, torchxrayvision）
-├── models_timm.py              # timm 模型包装器
-├── models_attention_crop.py    # Attention-Guided Crop 模块
+├── src/                        # 核心模块
+│   ├── cxr_config.py           # 配置文件（超参数、路径等）
+│   ├── dataset.py              # 数据集类（标准/多分辨率）
+│   ├── models.py               # 模型定义（DenseNet, torchxrayvision）
+│   ├── models_timm.py          # timm 模型包装器
+│   ├── models_attention_crop.py# Attention-Guided Crop 模块
+│   ├── loss_utils.py           # 损失函数（Focal, ASL, HybridLoss 等）
+│   ├── metrics_utils.py        # 评估指标（AUC, F1, 阈值搜索）
+│   └── log_utils.py            # 日志工具
 │
-├── dataset.py                  # 数据集类（标准/多分辨率）
-├── loss_utils.py               # 损失函数（Focal, ASL, HybridLoss 等）
-├── metrics_utils.py            # 评估指标（AUC, F1, 阈值搜索）
-│
-├── ensemble_timm.py            # timm 模型集成评估
-├── ensemble_search.py          # 集成权重搜索
-├── ensemble_val.py             # 验证集集成评估
-├── infer.py                    # 推理脚本
-│
-├── cxr_config.py               # 配置文件（超参数、路径等）
-├── requirements.txt            # 依赖包列表
+├── scripts/                    # 辅助脚本
+│   ├── ensemble_timm.py        # timm 模型集成评估
+│   ├── ensemble_search.py      # 集成权重搜索
+│   ├── ensemble_val.py         # 验证集集成评估
+│   ├── train_attention_crop.py # Attention-Guided Crop 训练
+│   └── infer.py                # 推理脚本
 │
 ├── data/                       # 数据目录
 │   └── filtered_labels.csv     # 标签文件
 ├── saved_models/               # 模型保存目录
-└── docs/                       # 文档
-    ├── README_attention_crop.md
-    └── README_two_stage.md
+├── logs/                       # 训练日志目录
+├── docs/                       # 文档
+│   ├── README_attention_crop.md
+│   └── README_two_stage.md
+│
+├── requirements.txt            # pip 依赖包列表
+└── environment.yml             # Conda 环境配置
 ```
 
 ## 🚀 快速开始
 
 ### 环境配置
+
+#### 方式 1：使用 Conda（推荐）
+
+```bash
+# 创建并激活环境
+conda env create -f environment.yml
+conda activate chestxray
+```
+
+#### 方式 2：使用 pip
 
 ```bash
 # 创建虚拟环境
@@ -78,8 +92,8 @@ pip install -r requirements.txt
 
 ### 必需依赖
 
-- Python >= 3.8
-- PyTorch >= 2.0.0
+- Python >= 3.9
+- PyTorch >= 2.0.0（CUDA 12.1）
 - torchvision >= 0.15.0
 - timm >= 0.9.0
 - torchxrayvision >= 1.2.0
@@ -90,7 +104,7 @@ pip install -r requirements.txt
 ### 数据准备
 
 1. 下载 NIH ChestX-ray14 数据集
-2. 修改 `cxr_config.py` 中的数据路径：
+2. 修改 `src/cxr_config.py` 中的数据路径：
 
 ```python
 NIH_DATA_ROOT = r"C:\path\to\NIH_DATA_ROOT"
@@ -137,7 +151,7 @@ python train_timm_models.py
 启用高分辨率局部特征提取：
 
 ```bash
-python train_attention_crop.py
+python scripts/train_attention_crop.py
 ```
 
 或在配置中启用：
@@ -150,7 +164,7 @@ AG_NUM_CROPS = 2
 
 ## ⚙️ 核心配置
 
-### 训练超参数 (`cxr_config.py`)
+### 训练超参数 (`src/cxr_config.py`)
 
 ```python
 # DenseNet 系列
@@ -198,7 +212,7 @@ AG_FUSION_TYPE = "concat_attention"  # 融合方式
 ### 运行集成评估
 
 ```bash
-python ensemble_timm.py
+python scripts/ensemble_timm.py
 ```
 
 ### 支持的集成策略

@@ -61,8 +61,8 @@ python train_attention_crop.py
 ### 方式 3：在代码中包装现有模型
 
 ```python
-from models import TorchXRayVisionDenseNet
-from models_attention_crop import wrap_model_with_attention_crop
+from src.models import TorchXRayVisionDenseNet
+from src.models_attention_crop import wrap_model_with_attention_crop
 
 # 创建基础模型
 base_model = TorchXRayVisionDenseNet(num_classes=14, weights="densenet121-res224-chex")
@@ -195,7 +195,7 @@ if model_name == "xrv-chex":
 A: 使用 `visualize_attention` 函数：
 
 ```python
-from models_attention_crop import visualize_attention
+from src.models_attention_crop import visualize_attention
 
 logits, attention_map = model(x_low, x_high, return_attention=True)
 visualize_attention(x_low[0], attention_map[0], save_path="attention.png")

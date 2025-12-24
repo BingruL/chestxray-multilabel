@@ -11,9 +11,10 @@ import itertools
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-from cxr_config import SAVE_DIR, CLASS_NAMES
-from metrics_utils import compute_metrics, search_best_thresholds
-from log_utils import setup_logger, close_logger
+from src.cxr_config import SAVE_DIR
+from src.metrics_utils import compute_metrics, search_best_thresholds
+from src.log_utils import setup_logger, close_logger
+from sklearn.metrics import f1_score
 
 
 # ========== 模型配置 ==========
@@ -1110,7 +1111,6 @@ def main():
     print(f"  阈值均值: {joint_thresholds.mean():.3f}, 标准差: {joint_thresholds.std():.3f}")
     
     # 使用联合优化的阈值计算指标
-    from sklearn.metrics import f1_score
     y_pred_bin_joint = (ens_joint >= joint_thresholds[None, :]).astype(int)
     f1_joint_final = f1_score(y_true, y_pred_bin_joint, average='macro', zero_division=0)
     auc_joint, _, _ = compute_metrics(y_true, ens_joint, thresholds=None)
