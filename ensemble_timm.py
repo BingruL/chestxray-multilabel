@@ -153,7 +153,7 @@ def search_best_thresholds_refined(y_true: np.ndarray, y_pred_prob: np.ndarray) 
     return best_thresholds
 
 
-def calibrate_predictions(preds_list: list, y_true: np.ndarray) -> list:
+def calibrate_predictions(preds_list: list, y_true: np.ndarray, use_cv: bool = False, n_splits: int = 5) -> list:
     """
     概率校准：对每个模型的每个类别进行 Isotonic Regression 校准
     
@@ -163,22 +163,57 @@ def calibrate_predictions(preds_list: list, y_true: np.ndarray) -> list:
     Args:
         preds_list: 各模型的预测概率列表
         y_true: 真实标签
+        use_cv: 是否使用交叉验证（避免数据泄露，但可能不稳定）
+        n_splits: K-Fold 的折数，默认 5（仅 use_cv=True 时有效）
     
     Returns:
         校准后的预测概率列表
+    
+    Note:
+        - use_cv=False: 在全量数据上校准，有轻微乐观偏差，但更稳定（推荐用于验证集评估）
+        - use_cv=True: 使用 StratifiedKFold 生成 OOF 校准，严格无泄露，但对稀有类别不稳定
     """
     from sklearn.isotonic import IsotonicRegression
     
     calibrated = []
     
-    for probs in preds_list:
-        calib_probs = np.zeros_like(probs, dtype=np.float32)
-        for c in range(probs.shape[1]):
-            # Isotonic Regression（单调校准）
-            ir = IsotonicRegression(out_of_bounds='clip')
-            ir.fit(probs[:, c], y_true[:, c])
-            calib_probs[:, c] = ir.predict(probs[:, c])
-        calibrated.append(calib_probs)
+    if use_cv:
+        # 严格无泄露模式：使用 StratifiedKFold
+        from sklearn.model_selection import StratifiedKFold
+        
+        for probs in preds_list:
+            n, num_classes = probs.shape
+            calib_probs = np.zeros_like(probs, dtype=np.float32)
+            
+            for c in range(num_classes):
+                y_c = y_true[:, c]
+                pos_count = y_c.sum()
+                neg_count = n - pos_count
+                
+                # 如果正/负样本太少，跳过校准（保持原始概率）
+                min_samples_per_fold = 10
+                if pos_count < min_samples_per_fold * n_splits or neg_count < min_samples_per_fold * n_splits:
+                    calib_probs[:, c] = probs[:, c]
+                    continue
+                
+                # 使用 StratifiedKFold 确保每个 fold 都有正负样本
+                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+                
+                for train_idx, val_idx in skf.split(probs, y_c):
+                    ir = IsotonicRegression(out_of_bounds='clip')
+                    ir.fit(probs[train_idx, c], y_c[train_idx])
+                    calib_probs[val_idx, c] = ir.predict(probs[val_idx, c])
+            
+            calibrated.append(calib_probs)
+    else:
+        # 稳定模式：在全量数据上校准（有轻微乐观偏差，但结果更稳定）
+        for probs in preds_list:
+            calib_probs = np.zeros_like(probs, dtype=np.float32)
+            for c in range(probs.shape[1]):
+                ir = IsotonicRegression(out_of_bounds='clip')
+                ir.fit(probs[:, c], y_true[:, c])
+                calib_probs[:, c] = ir.predict(probs[:, c])
+            calibrated.append(calib_probs)
     
     return calibrated
 
@@ -646,7 +681,7 @@ def logistic_stacking(preds_list: list, y_true: np.ndarray, n_splits: int = 5, C
     return stacked_probs
 
 
-def nonneg_stacking(preds_list: list, y_true: np.ndarray) -> tuple:
+def nonneg_stacking(preds_list: list, y_true: np.ndarray, use_cv: bool = False, n_splits: int = 5) -> tuple:
     """
     非负最小二乘 Stacking：约束权重 >= 0，更接近加权平均的物理意义
     
@@ -656,9 +691,15 @@ def nonneg_stacking(preds_list: list, y_true: np.ndarray) -> tuple:
     Args:
         preds_list: 各模型的预测概率列表
         y_true: 真实标签
+        use_cv: 是否使用交叉验证（避免数据泄露）
+        n_splits: K-Fold 的折数，默认 5（仅 use_cv=True 时有效）
     
     Returns:
         (stacked_probs, weights_per_class): 集成概率和每个类别的权重矩阵
+    
+    Note:
+        - use_cv=False: 在全量数据上拟合权重，有轻微乐观偏差，但更稳定
+        - use_cv=True: 使用 StratifiedKFold 生成 OOF 预测，严格无泄露
     """
     from scipy.optimize import nnls
     
@@ -668,54 +709,57 @@ def nonneg_stacking(preds_list: list, y_true: np.ndarray) -> tuple:
     stacked_probs = np.zeros((n, c), dtype=np.float32)
     weights_per_class = np.zeros((c, m), dtype=np.float32)  # (C, M)
     
-    for cls in range(c):
-        X = feats[:, cls, :]  # (N, M)
-        y = y_true[:, cls].astype(np.float64)
+    if use_cv:
+        # 严格无泄露模式：使用 StratifiedKFold
+        from sklearn.model_selection import StratifiedKFold
         
-        # 非负最小二乘: min ||Xw - y||^2  s.t. w >= 0
-        weights, _ = nnls(X, y)
-        
-        # 归一化权重
-        if weights.sum() > 0:
-            weights = weights / weights.sum()
-        else:
-            weights = np.ones(m) / m
-        
-        weights_per_class[cls] = weights
-        stacked_probs[:, cls] = X @ weights
+        for cls in range(c):
+            X = feats[:, cls, :]  # (N, M)
+            y = y_true[:, cls].astype(np.float64)
+            
+            pos_count = y.sum()
+            neg_count = n - pos_count
+            
+            # 如果正/负样本太少，使用简单平均
+            min_samples_per_fold = 10
+            if pos_count < min_samples_per_fold * n_splits or neg_count < min_samples_per_fold * n_splits:
+                weights = np.ones(m) / m
+                weights_per_class[cls] = weights
+                stacked_probs[:, cls] = X @ weights
+                continue
+            
+            fold_weights = []
+            skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            
+            for train_idx, val_idx in skf.split(X, y_true[:, cls]):
+                weights, _ = nnls(X[train_idx], y[train_idx])
+                
+                if weights.sum() > 0:
+                    weights = weights / weights.sum()
+                else:
+                    weights = np.ones(m) / m
+                
+                fold_weights.append(weights)
+                stacked_probs[val_idx, cls] = X[val_idx] @ weights
+            
+            weights_per_class[cls] = np.mean(fold_weights, axis=0)
+    else:
+        # 稳定模式：在全量数据上拟合权重
+        for cls in range(c):
+            X = feats[:, cls, :]
+            y = y_true[:, cls].astype(np.float64)
+            
+            weights, _ = nnls(X, y)
+            
+            if weights.sum() > 0:
+                weights = weights / weights.sum()
+            else:
+                weights = np.ones(m) / m
+            
+            weights_per_class[cls] = weights
+            stacked_probs[:, cls] = X @ weights
     
     return stacked_probs, weights_per_class
-
-
-def rank_average_ensemble(preds_list: list) -> np.ndarray:
-    """
-    Rank Averaging 集成：基于排名的集成方法
-    
-    将每个模型的预测概率转换为排名，消除不同模型概率尺度的差异，
-    然后对排名进行平均。这种方法对概率校准不敏感。
-    
-    Args:
-        preds_list: 各模型的预测概率列表，每个元素 shape=(N, C)
-    
-    Returns:
-        集成后的概率（实际是归一化的平均排名）
-    """
-    from scipy.stats import rankdata
-    
-    n, c = preds_list[0].shape
-    
-    # 对每个模型的每个类别转换为排名
-    ranked_preds = []
-    for probs in preds_list:
-        ranked = np.zeros_like(probs, dtype=np.float32)
-        for cls in range(c):
-            # rankdata 返回 1-based 排名，除以 n 归一化到 (0, 1]
-            ranked[:, cls] = rankdata(probs[:, cls]) / n
-        ranked_preds.append(ranked)
-    
-    # 对排名进行简单平均
-    stacked = np.stack(ranked_preds, axis=0)  # (M, N, C)
-    return stacked.mean(axis=0)  # (N, C)
 
 
 def per_class_weighted_ensemble(preds_list: list, model_aucs: list, temperature=1.0):
@@ -969,7 +1013,7 @@ def main():
     print("=" * 70)
     
     print("正在对各模型预测进行 Isotonic Regression 概率校准...")
-    calibrated_preds = calibrate_predictions(preds_list, y_true)
+    calibrated_preds = calibrate_predictions(preds_list, y_true, use_cv=True)
     
     ens_stack_calib = logistic_stacking(calibrated_preds, y_true, C=0.1)
     result_stack_calib = report_results("概率校准 + Logistic Stacking", y_true, ens_stack_calib)
@@ -980,7 +1024,7 @@ def main():
     print("策略 3b: 非负约束 Stacking (NNLS)")
     print("=" * 70)
     
-    ens_nnls, nnls_weights = nonneg_stacking(preds_list, y_true)
+    ens_nnls, nnls_weights = nonneg_stacking(preds_list, y_true, use_cv=True)
     
     # 显示每个类别学到的平均权重
     mean_weights = nnls_weights.mean(axis=0)
@@ -994,7 +1038,7 @@ def main():
     print("策略 3c: 概率校准 + 非负约束 Stacking (Isotonic + NNLS)")
     print("=" * 70)
     
-    ens_nnls_calib, nnls_weights_calib = nonneg_stacking(calibrated_preds, y_true)
+    ens_nnls_calib, nnls_weights_calib = nonneg_stacking(calibrated_preds, y_true, use_cv=False)
     
     mean_weights_calib = nnls_weights_calib.mean(axis=0)
     print(f"校准后 NNLS 平均权重: {dict(zip(available_models, mean_weights_calib.round(3)))}")
@@ -1134,17 +1178,7 @@ def main():
     }
     all_results.append(result_joint)
     
-    # ========== 6. Rank Averaging 集成 ==========
-    print("\n" + "=" * 70)
-    print("策略 6: Rank Averaging（基于排名的集成）")
-    print("=" * 70)
-    
-    print("将每个模型的预测概率转换为排名后平均，消除概率尺度差异...")
-    ens_rank = rank_average_ensemble(preds_list)
-    result_rank = report_results("Rank Averaging", y_true, ens_rank)
-    all_results.append(result_rank)
-    
-    # ========== 7. 汇总与保存结果 ==========
+    # ========== 6. 汇总与保存结果 ==========
     print("\n" + "=" * 70)
     print("集成策略汇总")
     print("=" * 70)
