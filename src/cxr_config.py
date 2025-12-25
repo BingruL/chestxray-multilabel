@@ -3,17 +3,22 @@
 import os
 import torch
 
+# 获取当前配置文件的目录 (src/)
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+# 项目根目录 (chestxray_multilabel/)
+_PROJECT_ROOT = os.path.dirname(_THIS_DIR)
+
 NIH_DATA_ROOT = r"C:\Users\libin\Desktop\NIH_DATA_ROOT"
 
 IMAGES_DIR = os.path.join(NIH_DATA_ROOT, "images")
 LABEL_CSV = os.path.join(NIH_DATA_ROOT, "filtered_labels.csv")
 
-# 模型保存目录
-SAVE_DIR = "../saved_models"
+# 模型保存目录（使用绝对路径）
+SAVE_DIR = os.path.join(_PROJECT_ROOT, "saved_models")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# 日志保存目录
-LOGS_DIR = "../logs"
+# 日志保存目录（使用绝对路径）
+LOGS_DIR = os.path.join(_PROJECT_ROOT, "logs")
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 # ====== 类别信息（ChestX-ray14 的 14 类） ======
