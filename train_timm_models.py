@@ -212,21 +212,128 @@ MODEL_CONFIGS = [
         "backbone": "eva02_large_patch14_448.mim_m38m_ft_in22k_in1k",
         "img_size": 448,
     },
+
+    # -------- Swin Transformer V2 系列 --------
+    {
+        "name": "swinv2_base_in22k_256",
+        "backbone": "swinv2_base_window12to16_192to256.ms_in22k_ft_in1k",
+        "img_size": 256,
+    },
+    {
+        "name": "swinv2_base_in22k_384",
+        "backbone": "swinv2_base_window12to24_192to384.ms_in22k_ft_in1k",
+        "img_size": 384,
+    },
+    {
+        "name": "swinv2_large_in22k_256",
+        "backbone": "swinv2_large_window12to16_192to256.ms_in22k_ft_in1k",
+        "img_size": 256,
+    },
+    {
+        "name": "swinv2_large_in22k_384",
+        "backbone": "swinv2_large_window12to24_192to384.ms_in22k_ft_in1k",
+        "img_size": 384,
+    },
+    {
+        "name": "swinv2_small_in1k_256",
+        "backbone": "swinv2_small_window16_256.ms_in1k",
+        "img_size": 256,
+    },
+
+    # -------- Swin S3 (AutoFormerV2) 系列 --------
+    {
+        "name": "swin_s3_base_224",
+        "backbone": "swin_s3_base_224.ms_in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "swin_s3_small_224",
+        "backbone": "swin_s3_small_224.ms_in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "swin_s3_tiny_224",
+        "backbone": "swin_s3_tiny_224.ms_in1k",
+        "img_size": 224,
+    },
+
+    # -------- CoAtNet 系列 (ImageNet-12k 预训练) --------
+    {
+        "name": "coatnet_2_rw_in12k",
+        "backbone": "coatnet_2_rw_224.sw_in12k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_2_rw_in12k_ft",
+        "backbone": "coatnet_2_rw_224.sw_in12k_ft_in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_3_rw_in12k",
+        "backbone": "coatnet_3_rw_224.sw_in12k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_rmlp_1_rw2_in12k",
+        "backbone": "coatnet_rmlp_1_rw2_224.sw_in12k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_rmlp_1_rw2_in12k_ft",
+        "backbone": "coatnet_rmlp_1_rw2_224.sw_in12k_ft_in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_rmlp_2_rw_in12k",
+        "backbone": "coatnet_rmlp_2_rw_224.sw_in12k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_rmlp_2_rw_in12k_ft",
+        "backbone": "coatnet_rmlp_2_rw_224.sw_in12k_ft_in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coatnet_rmlp_2_rw_384",
+        "backbone": "coatnet_rmlp_2_rw_384.sw_in12k_ft_in1k",
+        "img_size": 384,
+    },
 ]
 
 # 通过这个名单控制要训练的模型
 MODELS_TO_TRAIN = [
-   "convnext_base_in22k",
-   "convnext_base_in1k",
+   #"convnext_base_in22k",
+   #"convnext_base_in1k",
+   #"convnext_base_in22k_384",
+   #"convnext_base_in22k_512",
+   #"convnextv2_base_fcmae_384",
 
-   "convnext_base_in22k_384",
-   "convnext_base_in22k_512",
+   #"swin_base_in22k_384",  #AUC=0.81 还可以，F1=0.2636 太低了
 
-   # 新增模型
-   #"swin_base_in22k_384",  #性能不如convnext
-   "convnextv2_base_fcmae_384",
-   #"maxvit_base_in21k_512",  #很大，还未训练
-   #"eva02_large_448",       #很大，还未训练
+   # Swin Transformer V2 系列
+   #"swinv2_base_in22k_256",  #AUC=0.7969还行，F1很低
+   #"swinv2_small_in1k_256",   #AUC=0.7992还行，F1很低
+
+   # Swin S3 (AutoFormerV2) 系列
+   #"swin_s3_base_224",     #AUC=0.7957还行，F1很低
+   #"swin_s3_small_224",    #AUC=0.7967还行，F1很低
+
+
+    # "maxvit_base_in21k_512",  #太大了，本地跑不了，需要服务器
+    # "eva02_large_448",       #同上
+    # "swinv2_base_in22k_384",    # 显存需求高，本地跑不了
+    # "swinv2_large_in22k_256",   # Large 版本，显存需求高
+    # "swinv2_large_in22k_384",   # Large 版本，显存需求高
+
+    # CoAtNet 系列 (ImageNet-12k 预训练)
+    #"coatnet_2_rw_in12k",
+    #"coatnet_2_rw_in12k_ft",
+    #"coatnet_3_rw_in12k",
+    #"coatnet_rmlp_1_rw2_in12k",
+    #"coatnet_rmlp_1_rw2_in12k_ft",
+    "coatnet_rmlp_2_rw_in12k",
+    "coatnet_rmlp_2_rw_in12k_ft",
+    "coatnet_rmlp_2_rw_384",      # 384 分辨率
 ]
 
 
@@ -836,7 +943,7 @@ def main():
     print("所有模型训练完成，开始集成评估...")
     print("=" * 70)
     
-    from scripts.ensemble_timm import main as ensemble_main
+    from ensemble_timm import main as ensemble_main
     ensemble_main()
     
     # 关闭日志记录
