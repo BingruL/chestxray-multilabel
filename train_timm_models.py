@@ -129,6 +129,26 @@ MODEL_CONFIGS = [
         "backbone": "convnext_base.fb_in22k",  # 22K + 512 输入
         "img_size": 512,
     },
+    {
+        "name": "convnext_large_in22k",
+        "backbone": "convnext_large.fb_in22k_ft_in1k",  # 198M 参数
+        "img_size": 224,
+    },
+    {
+        "name": "convnext_large_in22k_384",
+        "backbone": "convnext_large.fb_in22k_ft_in1k_384",  # 198M 参数，384 分辨率
+        "img_size": 384,
+    },
+    {
+        "name": "convnext_xlarge_in22k",
+        "backbone": "convnext_xlarge.fb_in22k_ft_in1k",  # 350M 参数
+        "img_size": 224,
+    },
+    {
+        "name": "convnext_xlarge_in22k_384",
+        "backbone": "convnext_xlarge.fb_in22k_ft_in1k_384",  # 350M 参数，384 分辨率
+        "img_size": 384,
+    },
 
     # -------- Vision Transformer 系列 --------
     {
@@ -205,11 +225,41 @@ MODEL_CONFIGS = [
         "backbone": "convnextv2_base.fcmae_ft_in22k_in1k_384",
         "img_size": 384,
     },
+    {
+        "name": "convnextv2_base_in22k_512",
+        "backbone": "convnextv2_base.fcmae_ft_in22k_in1k",  # 使用 22K→1K 权重 + 512 分辨率
+        "img_size": 512,
+    },
 
-    # -------- EVA-02 --------
+    # -------- EVA-02 系列 --------
+    {
+        "name": "eva02_small_224",
+        "backbone": "eva02_small_patch14_224.mim_in22k",
+        "img_size": 224,
+    },
+    {
+        "name": "eva02_small_336",
+        "backbone": "eva02_small_patch14_336.mim_in22k_ft_in1k",
+        "img_size": 336,
+    },
+    {
+        "name": "eva02_base_224",
+        "backbone": "eva02_base_patch14_224.mim_in22k",
+        "img_size": 224,
+    },
+    {
+        "name": "eva02_base_448",
+        "backbone": "eva02_base_patch14_448.mim_in22k_ft_in1k",
+        "img_size": 448,
+    },
+    {
+        "name": "eva02_large_224",
+        "backbone": "eva02_large_patch14_224.mim_in22k",
+        "img_size": 224,
+    },
     {
         "name": "eva02_large_448",
-        "backbone": "eva02_large_patch14_448.mim_m38m_ft_in22k_in1k",
+        "backbone": "eva02_large_patch14_448.mim_in22k_ft_in1k",
         "img_size": 448,
     },
 
@@ -264,7 +314,7 @@ MODEL_CONFIGS = [
         "img_size": 224,
     },
     {
-        "name": "coatnet_2_rw_in12k_ft",
+        "name": "coatnet_2_rw_in12k_ft",              #AUC=0.7862，F1很低
         "backbone": "coatnet_2_rw_224.sw_in12k_ft_in1k",
         "img_size": 224,
     },
@@ -279,7 +329,7 @@ MODEL_CONFIGS = [
         "img_size": 224,
     },
     {
-        "name": "coatnet_rmlp_1_rw2_in12k_ft",
+        "name": "coatnet_rmlp_1_rw2_in12k_ft",          #AUC=0.7893，F1很低
         "backbone": "coatnet_rmlp_1_rw2_224.sw_in12k_ft_in1k",
         "img_size": 224,
     },
@@ -298,6 +348,65 @@ MODEL_CONFIGS = [
         "backbone": "coatnet_rmlp_2_rw_384.sw_in12k_ft_in1k",
         "img_size": 384,
     },
+
+    # -------- CoaT (Co-Scale Conv-Attentional) 系列 --------
+    {
+        "name": "coat_tiny",
+        "backbone": "coat_tiny.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_mini",
+        "backbone": "coat_mini.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_small",
+        "backbone": "coat_small.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_lite_tiny",
+        "backbone": "coat_lite_tiny.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_lite_mini",
+        "backbone": "coat_lite_mini.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_lite_small",
+        "backbone": "coat_lite_small.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_lite_medium",
+        "backbone": "coat_lite_medium.in1k",
+        "img_size": 224,
+    },
+    {
+        "name": "coat_lite_medium_384",
+        "backbone": "coat_lite_medium_384.in1k",
+        "img_size": 384,
+    },
+
+    # -------- BoTNet (Bottleneck Transformers) 系列 --------
+    {
+        "name": "botnet26t_256",
+        "backbone": "botnet26t_256.c1_in1k",
+        "img_size": 256,
+    },
+    {
+        "name": "botnet50ts_256",
+        "backbone": "botnet50ts_256.c1_in1k",
+        "img_size": 256,
+    },
+    {
+        "name": "eca_botnext26ts_256",
+        "backbone": "eca_botnext26ts_256.c1_in1k",
+        "img_size": 256,
+    },
 ]
 
 # 通过这个名单控制要训练的模型
@@ -307,33 +416,32 @@ MODELS_TO_TRAIN = [
    #"convnext_base_in22k_384",
    #"convnext_base_in22k_512",
    #"convnextv2_base_fcmae_384",
+   "convnextv2_base_in22k_512",      # V2 版本 + 512 分辨率
 
-   #"swin_base_in22k_384",  #AUC=0.81 还可以，F1=0.2636 太低了
+   #"convnext_large_in22k_384",    #AUC=0.8146，F1=0.2728
+   "convnext_xlarge_in22k",
 
-   # Swin Transformer V2 系列
-   #"swinv2_base_in22k_256",  #AUC=0.7969还行，F1很低
+   #"swin_base_in22k_384",  #AUC=0.81 还可以，F1=0.2636 很低
+
    #"swinv2_small_in1k_256",   #AUC=0.7992还行，F1很低
 
-   # Swin S3 (AutoFormerV2) 系列
-   #"swin_s3_base_224",     #AUC=0.7957还行，F1很低
    #"swin_s3_small_224",    #AUC=0.7967还行，F1很低
 
 
+    # CoaT (Co-Scale Conv-Attentional) 系列
+    #"coat_tiny",    #AUC=0.8065，F1很低
+    #"coat_mini",    #AUC=0.8063，F1=0.2842，但二者的峰值epoch相差4
+    "coat_lite_medium",
+    "coat_lite_medium_384",
+    
+
+    # "convnext_xlarge_in22k_384",  # 显存需求高，本地跑不了
     # "maxvit_base_in21k_512",  #太大了，本地跑不了，需要服务器
-    # "eva02_large_448",       #同上
     # "swinv2_base_in22k_384",    # 显存需求高，本地跑不了
     # "swinv2_large_in22k_256",   # Large 版本，显存需求高
     # "swinv2_large_in22k_384",   # Large 版本，显存需求高
-
-    # CoAtNet 系列 (ImageNet-12k 预训练)
-    #"coatnet_2_rw_in12k",
-    #"coatnet_2_rw_in12k_ft",
-    #"coatnet_3_rw_in12k",
-    #"coatnet_rmlp_1_rw2_in12k",
-    #"coatnet_rmlp_1_rw2_in12k_ft",
-    "coatnet_rmlp_2_rw_in12k",
-    "coatnet_rmlp_2_rw_in12k_ft",
-    "coatnet_rmlp_2_rw_384",      # 384 分辨率
+    
+    
 ]
 
 
