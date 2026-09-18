@@ -24,7 +24,28 @@ The current experiment report on the project subset shows the following validati
 
 The results were obtained on an NVIDIA RTX 4080 (12 GB). Exact scores depend on the data split, installed versions, random seeds, and available pretrained weights.
 
-![Per-class evaluation heatmap](figures/metrics_heatmap.png)
+## Visual results
+
+The repository includes the main evaluation plots generated from the validation and test predictions.
+
+<table>
+  <tr>
+    <td align="center"><img src="figures/metrics_heatmap.png" alt="Per-class metrics heatmap" width="100%"><br><sub>Per-class metrics heatmap</sub></td>
+    <td align="center"><img src="figures/roc_curves_all.png" alt="ROC curves for all labels" width="100%"><br><sub>ROC curves across the 14 labels</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="figures/pr_curves.png" alt="Precision-recall curves" width="100%"><br><sub>Precision-recall curves</sub></td>
+    <td align="center"><img src="figures/confusion_matrices_grid.png" alt="Confusion matrices" width="100%"><br><sub>Per-label confusion matrices</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="figures/class_distribution.png" alt="Class distribution" width="100%"><br><sub>Label distribution</sub></td>
+    <td align="center"><img src="figures/confusion_matrix_summary.png" alt="Confusion matrix summary" width="100%"><br><sub>Confusion matrix summary</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="figures/auc_bar_chart.png" alt="AUC comparison" width="100%"><br><sub>AUC comparison</sub></td>
+    <td align="center"><img src="figures/f1_bar_chart.png" alt="F1 comparison" width="100%"><br><sub>F1 comparison</sub></td>
+  </tr>
+</table>
 
 ## Repository layout
 
