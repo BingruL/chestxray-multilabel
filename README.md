@@ -215,4 +215,4 @@ saved_models/
 
 ## License
 
-No open-source license has been selected for this repository yet. Add a license before accepting external contributions or redistributing the code.
+This project is released under the [MIT License](LICENSE). The NIH ChestX-ray14 dataset and any pretrained model weights remain subject to their respective terms of use.
