@@ -1,5 +1,7 @@
 # 两阶段训练策略使用说明
 
+# 经过对比测试，该策略在本项目中**未带来稳定的性能提升，已从主实验中停用**，仅保留代码和说明供研究参考。
+
 ## 概述
 
 两阶段训练策略将训练过程分为两个阶段：
@@ -42,11 +44,11 @@
 
 ## 配置说明
 
-### train.py 中的配置
+### scripts/train.py / train_timm_models.py 中的配置
 
 ```python
 # ================== 两阶段训练策略配置 ==================
-USE_TWO_STAGE = True          # 是否启用两阶段训练
+USE_TWO_STAGE = False         # 是否启用两阶段训练（默认关闭）
 STAGE1_EPOCHS = 15            # Stage 1 的 epoch 数
 STAGE2_LOSS = "asl"           # Stage 2 损失函数: asl, la, focal
 STAGE2_LR_FACTOR = 0.1        # Stage 2 学习率倍数
@@ -58,8 +60,8 @@ STAGE2_RESET_EMA = False      # Stage 2 是否重置 EMA
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `USE_TWO_STAGE` | True | 总开关 |
-| `STAGE1_EPOCHS` | 15 | Stage 1 epoch 数（建议总 epoch 的 50%） |
+| `USE_TWO_STAGE` | False | 总开关，当前项目默认关闭 |
+| `STAGE1_EPOCHS` | 15 | Stage 1 epoch 数（建议总 epoch 的 40%–60%） |
 | `STAGE2_LOSS` | "asl" | Stage 2 损失函数 |
 | `STAGE2_LR_FACTOR` | 0.1 | Stage 2 学习率 = LR × 此值 |
 | `STAGE2_DISABLE_MIXUP` | True | Stage 2 禁用 Mixup |
@@ -75,7 +77,7 @@ STAGE2_RESET_EMA = False      # Stage 2 是否重置 EMA
 
 ## 使用方式
 
-### 方式 1：修改配置后运行
+### 方式 1：修改配置后运行（仅供自行实验）
 
 ```python
 # train.py 中设置
@@ -90,13 +92,9 @@ STAGE2_LOSS = "asl"
 python train.py
 ```
 
-### 方式 2：命令行（如果支持）
+> 当前代码未实现命令行参数形式的两阶段开关，需通过修改脚本内的配置变量启用。
 
-```bash
-python train.py --two-stage --stage1-epochs 15 --stage2-loss asl
-```
-
-## 训练日志示例
+## 训练日志示例（示意）
 
 ```
 [xrv-chex] Epoch 15 [Stage 1]:
@@ -118,14 +116,14 @@ python train.py --two-stage --stage1-epochs 15 --stage2-loss asl
   Current LR: 0.000010
 ```
 
-## 预期效果
+## 实验结果与结论
 
-相比单阶段训练：
+在本项目的数据规模和当前模型配置下，我们对两阶段训练策略进行了多轮实验，观察到：
 
-| 指标 | 单阶段 | 两阶段 | 提升 |
-|------|--------|--------|------|
-| Macro-F1 | 0.40 | 0.42-0.44 | +2-4% |
-| AUC | 0.82 | 0.83-0.84 | +1-2% |
+- 在个别配置下，指标存在小幅波动，但**未能稳定、显著地优于单阶段训练**；
+- 引入了额外的超参数（如切换 epoch、第二阶段损失类型和学习率因子），增加了调参复杂度。
+
+因此，最终在主实验中**不再启用两阶段训练**，而是采用简化的一阶段训练流程。本说明文档主要保留该策略的设计思路和接口，方便日后如需在其他数据集或更大规模实验中继续探索。
 
 ## 与其他策略配合
 

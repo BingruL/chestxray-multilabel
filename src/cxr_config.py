@@ -66,10 +66,57 @@ TIMM_EARLY_STOP = True
 TIMM_EARLY_STOP_PATIENCE = 3
 TIMM_EARLY_STOP_MIN_DELTA = 0.0
 
+# ------ 架构特定超参数配置（已禁用，经测试统一配置性能更好）------
+# 如需启用，将 TIMM_USE_ARCH_SPECIFIC_CONFIG 设为 True
+TIMM_USE_ARCH_SPECIFIC_CONFIG = False
+
+# # 默认配置（作为 fallback）
+# TIMM_DEFAULT_CONFIG = {
+#     "lr": 1e-4,
+#     "weight_decay": 5e-2,         # 提升到 0.05（官方推荐）
+#     "warmup_epochs": 2,
+#     "mixup_alpha": 0.2,
+#     "layer_decay": None,          # 不使用层级学习率衰减
+# }
+
+# # ConvNeXt 系列配置（现代 CNN，训练稳定）
+# TIMM_CONVNEXT_CONFIG = {
+#     "lr": 1e-4,                   # 官方推荐
+#     "weight_decay": 5e-2,         # 官方推荐 0.05
+#     "warmup_epochs": 2,           # 足够
+#     "mixup_alpha": 0.3,           # 适度增强
+#     "layer_decay": 0.85,          # 层级学习率衰减
+# }
+
+# # Swin Transformer 系列配置（对超参数敏感）
+# TIMM_SWIN_CONFIG = {
+#     "lr": 5e-5,                   # 比 CNN 小一半
+#     "weight_decay": 5e-2,         # 官方推荐
+#     "warmup_epochs": 5,           # 更长的 warmup
+#     "mixup_alpha": 0.4,           # 更强的数据增强
+#     "layer_decay": 0.75,          # 更强的层级衰减
+# }
+
+# # CoaT 混合架构配置（介于 CNN 和 Transformer 之间）
+# TIMM_COAT_CONFIG = {
+#     "lr": 8e-5,                   # 略低于纯 CNN
+#     "weight_decay": 3e-2,         # 中等正则化
+#     "warmup_epochs": 3,           # 中等 warmup
+#     "mixup_alpha": 0.2,           # 适度增强
+#     "layer_decay": 0.8,           # 中等层级衰减
+# }
+
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 RANDOM_SEED = 42
-VAL_RATIO = 0.1   # 从 21844 张里再划 10% 做验证
+
+# 数据集划分比例（按病人划分）
+TRAIN_RATIO = 0.8   # 训练集比例
+VAL_RATIO = 0.1     # 验证集比例
+TEST_RATIO = 0.1    # 测试集比例
+
+# 稀有类别列表（样本数 < 200 的类别，需要分层抽样保证每个集合都有样本）
+RARE_CLASSES = ["Hernia", "Pneumonia", "Fibrosis", "Edema", "Emphysema"]
 
 
 # ====== Attention-Guided Crop 配置 ======
@@ -95,7 +142,7 @@ SMALL_LESION_CLASSES = ["Nodule", "Mass", "Pneumothorax"]
 # ====== 两阶段训练配置 ======
 # Stage 1: 稳定学习表征（使用温和的 HybridLoss，正常学习率）
 # Stage 2: 指标对齐微调（切换到 ASL，降低学习率）
-TWO_STAGE_ENABLED = True       # 是否启用两阶段训练
+TWO_STAGE_ENABLED = False      # 是否启用两阶段训练
 TWO_STAGE_STAGE1_EPOCHS = 15   # Stage 1 的 epoch 数
 TWO_STAGE_STAGE2_LOSS = "asl"  # Stage 2 损失函数: asl, la, focal
 TWO_STAGE_LR_FACTOR = 0.1      # Stage 2 学习率相对于 Stage 1 的倍数

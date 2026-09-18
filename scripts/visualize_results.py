@@ -59,14 +59,26 @@ def load_ensemble_predictions(version="auc"):
     metadata = {
         'strategy': str(data['ensemble_strategy']) if 'ensemble_strategy' in data else 'unknown',
         'model_names': list(data['model_names']) if 'model_names' in data else [],
+        'version': version,
     }
     
+    # 读取最佳指标
     if 'best_auc' in data:
         metadata['best_auc'] = float(data['best_auc'])
+    if 'best_f1' in data:
+        metadata['best_f1'] = float(data['best_f1'])
     
-    print(f"已加载集成结果: {path}")
-    print(f"  策略: {metadata['strategy']}")
-    print(f"  数据形状: y_true={y_true.shape}, y_pred_prob={y_pred_prob.shape}")
+    # 读取保存的阈值（如果有）
+    if 'thresholds' in data:
+        metadata['thresholds'] = data['thresholds']
+    
+    print(f"  已加载 [{version.upper()}] 集成结果: {os.path.basename(path)}")
+    print(f"    策略: {metadata['strategy']}")
+    if 'best_auc' in metadata:
+        print(f"    Best AUC: {metadata['best_auc']:.4f}")
+    if 'best_f1' in metadata:
+        print(f"    Best F1: {metadata['best_f1']:.4f}")
+    print(f"    数据形状: y_true={y_true.shape}, y_pred_prob={y_pred_prob.shape}")
     
     return y_true, y_pred_prob, metadata
 
@@ -400,6 +412,144 @@ def plot_class_distribution(y_true, save_path=None):
     plt.close()
 
 
+def plot_confusion_matrices_grid(metrics, save_path=None):
+    """
+    绘制每种疾病单独的混淆矩阵（网格布局）
+    """
+    fig, axes = plt.subplots(4, 4, figsize=(16, 14))
+    axes = axes.flatten()
+    
+    for i, name in enumerate(CLASS_NAMES):
+        ax = axes[i]
+        m = metrics[name]
+        
+        # 构建混淆矩阵 [[TN, FP], [FN, TP]]
+        cm = np.array([[m['tn'], m['fp']], 
+                       [m['fn'], m['tp']]])
+        
+        # 绘制混淆矩阵
+        im = ax.imshow(cm, cmap='Blues', aspect='equal')
+        
+        # 添加数值标注
+        for ii in range(2):
+            for jj in range(2):
+                val = cm[ii, jj]
+                # 根据数值大小选择文字颜色
+                color = 'white' if val > cm.max() / 2 else 'black'
+                ax.text(jj, ii, f'{val}', ha='center', va='center', 
+                       color=color, fontsize=11, fontweight='bold')
+        
+        # 设置标签
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(['Neg', 'Pos'], fontsize=9)
+        ax.set_yticklabels(['Neg', 'Pos'], fontsize=9)
+        ax.set_xlabel('Predicted', fontsize=9)
+        ax.set_ylabel('Actual', fontsize=9)
+        
+        # 标题包含 AUC 和 F1
+        ax.set_title(f'{name}\nAUC={m["auc"]:.3f}, F1={m["f1"]:.3f}', fontsize=9)
+    
+    # 隐藏多余的子图，并在最后一个位置添加汇总
+    for j in range(len(CLASS_NAMES), len(axes) - 1):
+        axes[j].axis('off')
+    
+    # 在最后一个位置添加图例说明
+    ax_legend = axes[-1]
+    ax_legend.axis('off')
+    legend_text = "Confusion Matrix Legend:\n\n"
+    legend_text += "┌─────────┬─────────┐\n"
+    legend_text += "│   TN    │   FP    │\n"
+    legend_text += "├─────────┼─────────┤\n"
+    legend_text += "│   FN    │   TP    │\n"
+    legend_text += "└─────────┴─────────┘\n\n"
+    legend_text += "TN: True Negative\n"
+    legend_text += "FP: False Positive\n"
+    legend_text += "FN: False Negative\n"
+    legend_text += "TP: True Positive"
+    ax_legend.text(0.1, 0.5, legend_text, fontsize=10, 
+                   verticalalignment='center', family='monospace',
+                   bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    
+    plt.suptitle('Confusion Matrices for 14 Chest X-ray Diseases', fontsize=14, y=1.02)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"已保存: {save_path}")
+    plt.close()
+
+
+def plot_confusion_matrices_normalized(metrics, save_path=None):
+    """
+    绘制归一化的混淆矩阵（按行归一化，显示百分比）
+    """
+    fig, axes = plt.subplots(4, 4, figsize=(16, 14))
+    axes = axes.flatten()
+    
+    for i, name in enumerate(CLASS_NAMES):
+        ax = axes[i]
+        m = metrics[name]
+        
+        # 构建混淆矩阵
+        cm = np.array([[m['tn'], m['fp']], 
+                       [m['fn'], m['tp']]])
+        
+        # 按行归一化（每行和为1）
+        cm_normalized = cm.astype(float)
+        row_sums = cm.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1  # 避免除零
+        cm_normalized = cm_normalized / row_sums
+        
+        # 绘制归一化混淆矩阵
+        im = ax.imshow(cm_normalized, cmap='Blues', aspect='equal', vmin=0, vmax=1)
+        
+        # 添加数值标注（显示百分比和原始数值）
+        for ii in range(2):
+            for jj in range(2):
+                pct = cm_normalized[ii, jj] * 100
+                raw = cm[ii, jj]
+                color = 'white' if pct > 50 else 'black'
+                ax.text(jj, ii, f'{pct:.1f}%\n({raw})', ha='center', va='center', 
+                       color=color, fontsize=9, fontweight='bold')
+        
+        # 设置标签
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(['Neg', 'Pos'], fontsize=9)
+        ax.set_yticklabels(['Neg', 'Pos'], fontsize=9)
+        ax.set_xlabel('Predicted', fontsize=9)
+        ax.set_ylabel('Actual', fontsize=9)
+        
+        # 标题
+        ax.set_title(f'{name}\nPrec={m["precision"]:.2f}, Rec={m["recall"]:.2f}', fontsize=9)
+    
+    # 隐藏多余的子图
+    for j in range(len(CLASS_NAMES), len(axes) - 1):
+        axes[j].axis('off')
+    
+    # 添加说明
+    ax_legend = axes[-1]
+    ax_legend.axis('off')
+    legend_text = "Normalized by Row\n(True Labels)\n\n"
+    legend_text += "Top row: Specificity\n"
+    legend_text += "  TNR = TN/(TN+FP)\n\n"
+    legend_text += "Bottom row: Sensitivity\n"
+    legend_text += "  TPR = TP/(TP+FN)\n"
+    legend_text += "  (= Recall)"
+    ax_legend.text(0.1, 0.5, legend_text, fontsize=10, 
+                   verticalalignment='center', family='monospace',
+                   bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    
+    plt.suptitle('Normalized Confusion Matrices (Row-wise)', fontsize=14, y=1.02)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"已保存: {save_path}")
+    plt.close()
+
+
 def plot_metrics_heatmap(metrics, save_path=None):
     """
     绘制各类别指标热力图
@@ -466,9 +616,53 @@ def generate_summary_table(metrics):
     print("="*80)
 
 
+def plot_metrics_heatmap_combined(metrics_auc, metrics_f1, save_path=None):
+    """
+    绘制合并的指标热力图（AUC来自AUC最优，F1/Precision/Recall来自F1最优）
+    """
+    metric_names = ['AUC', 'F1', 'Precision', 'Recall']
+    data = np.zeros((len(CLASS_NAMES), len(metric_names)))
+    
+    for i, name in enumerate(CLASS_NAMES):
+        # AUC 使用 AUC 最优集成的数据
+        data[i, 0] = metrics_auc[name]['auc']
+        # F1, Precision, Recall 使用 F1 最优集成的数据
+        data[i, 1] = metrics_f1[name]['f1']
+        data[i, 2] = metrics_f1[name]['precision']
+        data[i, 3] = metrics_f1[name]['recall']
+    
+    fig, ax = plt.subplots(figsize=(10, 12))
+    
+    im = ax.imshow(data, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
+    
+    ax.set_xticks(np.arange(len(metric_names)))
+    ax.set_yticks(np.arange(len(CLASS_NAMES)))
+    ax.set_xticklabels(metric_names, fontsize=11)
+    ax.set_yticklabels(CLASS_NAMES, fontsize=10)
+    
+    # 添加数值标注
+    for i in range(len(CLASS_NAMES)):
+        for j in range(len(metric_names)):
+            text = ax.text(j, i, f'{data[i, j]:.3f}',
+                          ha='center', va='center', color='black', fontsize=9)
+    
+    ax.set_title('Performance Metrics Heatmap by Disease\n(AUC from AUC-optimal, F1/Prec/Rec from F1-optimal)', fontsize=13)
+    plt.colorbar(im, ax=ax, shrink=0.8)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"已保存: {save_path}")
+    plt.close()
+
+
 def main():
     """
     主函数：生成所有可视化内容
+    
+    使用策略：
+    - AUC 相关图片（ROC曲线、AUC柱状图、PR曲线）使用 AUC 最优集成数据
+    - F1 相关图片（F1柱状图、混淆矩阵）使用 F1 最优集成数据
     """
     print("="*60)
     print("ChestX-ray14 多标签分类结果可视化")
@@ -476,64 +670,122 @@ def main():
     print(f"输出目录: {OUTPUT_DIR}")
     print()
     
-    # 1. 加载数据
-    print("\n[1/8] 加载集成模型预测结果...")
+    # ========== 1. 加载两个版本的数据 ==========
+    print("\n[步骤 1] 加载集成模型预测结果...")
+    
+    # 加载 AUC 最优集成
+    print("\n  加载 AUC 最优集成...")
     try:
-        y_true, y_pred_prob, metadata = load_ensemble_predictions(version="auc")
+        y_true_auc, y_pred_prob_auc, metadata_auc = load_ensemble_predictions(version="auc")
     except FileNotFoundError as e:
         print(f"错误: {e}")
         print("请先运行 ensemble_timm.py 生成集成结果")
         return
     
-    # 2. 计算指标
-    print("\n[2/8] 计算各类别指标...")
-    metrics, thresholds = compute_per_class_metrics(y_true, y_pred_prob)
-    generate_summary_table(metrics)
+    # 加载 F1 最优集成
+    print("\n  加载 F1 最优集成...")
+    try:
+        y_true_f1, y_pred_prob_f1, metadata_f1 = load_ensemble_predictions(version="f1")
+    except FileNotFoundError as e:
+        print(f"警告: {e}")
+        print("未找到 F1 最优集成，F1 相关图片将使用 AUC 最优集成数据")
+        y_true_f1, y_pred_prob_f1, metadata_f1 = y_true_auc, y_pred_prob_auc, metadata_auc
     
-    # 3. 绘制 ROC 曲线（所有类别）
-    print("\n[3/8] 绘制 ROC 曲线（合并图）...")
-    plot_roc_curves_all(y_true, y_pred_prob, 
+    # ========== 2. 计算两套指标 ==========
+    print("\n[步骤 2] 计算各类别指标...")
+    
+    print("  计算 AUC 最优集成的指标...")
+    metrics_auc, thresholds_auc = compute_per_class_metrics(y_true_auc, y_pred_prob_auc)
+    
+    print("  计算 F1 最优集成的指标...")
+    # 使用保存的最优阈值（如果有），否则重新搜索
+    saved_thresholds_f1 = metadata_f1.get('thresholds', None)
+    metrics_f1, thresholds_f1 = compute_per_class_metrics(y_true_f1, y_pred_prob_f1, thresholds=saved_thresholds_f1)
+    
+    # 打印汇总表格
+    print("\n" + "="*80)
+    print("AUC 最优集成 - 各类别指标")
+    print("="*80)
+    generate_summary_table(metrics_auc)
+    
+    print("\n" + "="*80)
+    print("F1 最优集成 - 各类别指标")
+    print("="*80)
+    generate_summary_table(metrics_f1)
+    
+    # ========== 3. AUC 相关图片（使用 AUC 最优数据）==========
+    print("\n" + "="*60)
+    print("生成 AUC 相关图片（使用 AUC 最优集成数据）")
+    print("="*60)
+    
+    # ROC 曲线（合并图）
+    print("\n[3/10] 绘制 ROC 曲线（合并图）...")
+    plot_roc_curves_all(y_true_auc, y_pred_prob_auc, 
                         save_path=os.path.join(OUTPUT_DIR, "roc_curves_all.png"))
     
-    # 4. 绘制 ROC 曲线（网格布局）
-    print("\n[4/8] 绘制 ROC 曲线（网格图）...")
-    plot_roc_curves_grid(y_true, y_pred_prob,
+    # ROC 曲线（网格布局）
+    print("\n[4/10] 绘制 ROC 曲线（网格图）...")
+    plot_roc_curves_grid(y_true_auc, y_pred_prob_auc,
                          save_path=os.path.join(OUTPUT_DIR, "roc_curves_grid.png"))
     
-    # 5. 绘制 AUC 柱状图
-    print("\n[5/8] 绘制 AUC 柱状图...")
-    plot_auc_bar_chart(metrics,
+    # AUC 柱状图
+    print("\n[5/10] 绘制 AUC 柱状图...")
+    plot_auc_bar_chart(metrics_auc,
                        save_path=os.path.join(OUTPUT_DIR, "auc_bar_chart.png"))
     
-    # 6. 绘制 F1 柱状图
-    print("\n[6/8] 绘制 F1 柱状图...")
-    plot_f1_bar_chart(metrics,
-                      save_path=os.path.join(OUTPUT_DIR, "f1_bar_chart.png"))
-    
-    # 7. 绘制混淆矩阵统计
-    print("\n[7/8] 绘制混淆矩阵统计...")
-    plot_confusion_matrix_summary(metrics,
-                                  save_path=os.path.join(OUTPUT_DIR, "confusion_matrix_summary.png"))
-    
-    # 8. 绘制 PR 曲线
-    print("\n[8/8] 绘制 Precision-Recall 曲线...")
-    plot_pr_curves(y_true, y_pred_prob,
+    # PR 曲线
+    print("\n[6/10] 绘制 Precision-Recall 曲线...")
+    plot_pr_curves(y_true_auc, y_pred_prob_auc,
                    save_path=os.path.join(OUTPUT_DIR, "pr_curves.png"))
     
-    # 额外：类别分布图
+    # ========== 4. F1 相关图片（使用 F1 最优数据）==========
+    print("\n" + "="*60)
+    print("生成 F1 相关图片（使用 F1 最优集成数据）")
+    print("="*60)
+    
+    # F1 柱状图
+    print("\n[7/10] 绘制 F1 柱状图...")
+    plot_f1_bar_chart(metrics_f1,
+                      save_path=os.path.join(OUTPUT_DIR, "f1_bar_chart.png"))
+    
+    # 混淆矩阵统计汇总
+    print("\n[8/10] 绘制混淆矩阵统计汇总...")
+    plot_confusion_matrix_summary(metrics_f1,
+                                  save_path=os.path.join(OUTPUT_DIR, "confusion_matrix_summary.png"))
+    
+    # 每种疾病的混淆矩阵（原始数值）
+    print("\n[9/10] 绘制各疾病混淆矩阵（原始值）...")
+    plot_confusion_matrices_grid(metrics_f1,
+                                 save_path=os.path.join(OUTPUT_DIR, "confusion_matrices_grid.png"))
+    
+    # 每种疾病的混淆矩阵（归一化百分比）
+    print("\n[10/10] 绘制各疾病混淆矩阵（归一化）...")
+    plot_confusion_matrices_normalized(metrics_f1,
+                                       save_path=os.path.join(OUTPUT_DIR, "confusion_matrices_normalized.png"))
+    
+    # ========== 5. 其他图片 ==========
+    print("\n" + "="*60)
+    print("生成其他图片")
+    print("="*60)
+    
+    # 类别分布图（y_true 两个版本相同）
     print("\n[额外] 绘制类别分布图...")
-    plot_class_distribution(y_true,
+    plot_class_distribution(y_true_auc,
                            save_path=os.path.join(OUTPUT_DIR, "class_distribution.png"))
     
-    # 额外：指标热力图
-    print("\n[额外] 绘制指标热力图...")
-    plot_metrics_heatmap(metrics,
-                         save_path=os.path.join(OUTPUT_DIR, "metrics_heatmap.png"))
+    # 合并热力图（AUC 用 AUC 版本，F1/Prec/Rec 用 F1 版本）
+    print("\n[额外] 绘制合并指标热力图...")
+    plot_metrics_heatmap_combined(metrics_auc, metrics_f1,
+                                  save_path=os.path.join(OUTPUT_DIR, "metrics_heatmap.png"))
     
+    # ========== 完成 ==========
     print("\n" + "="*60)
     print("可视化完成！")
-    print(f"所有图片已保存至: {OUTPUT_DIR}")
     print("="*60)
+    print(f"\n数据来源说明:")
+    print(f"  • AUC 相关图片: 使用 AUC 最优集成 ({metadata_auc['strategy']})")
+    print(f"  • F1 相关图片:  使用 F1 最优集成 ({metadata_f1['strategy']})")
+    print(f"\n所有图片已保存至: {OUTPUT_DIR}")
     
     # 列出生成的文件
     print("\n生成的文件:")

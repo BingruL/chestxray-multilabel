@@ -16,7 +16,7 @@ Attention-Guided Crop 训练便捷入口
     然后运行 python train.py
 """
 
-import train
+from scripts import train
 
 if __name__ == "__main__":
     # 启用 Attention-Guided Crop 模式

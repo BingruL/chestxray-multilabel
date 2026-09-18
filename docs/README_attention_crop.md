@@ -1,10 +1,12 @@
 # Attention-Guided Crop 使用说明
 
+# 经过对比测试，该策略在本项目中**未带来稳定的性能提升，已从主实验中停用**，仅保留代码和说明供研究参考。
+
 ## 概述
 
-Attention-Guided Crop 是一个**可插拔的增强模块**，已经集成到现有的 `train.py`（XRV模型）和 `train_timm_models.py`（timm模型）中。
+Attention-Guided Crop 是一个**可插拔的增强模块**，已经集成到现有的 `scripts/train.py`（XRV 模型）和 `train_timm_models.py`（timm 模型）中。
 
-通过简单的配置开关即可启用此功能，**无需使用单独的训练脚本**。
+在当前代码中，默认配置为 **关闭**（`USE_ATTENTION_CROP = False`），不会参与正式实验。如需自行探索，可以通过简单的配置开关启用此功能，**无需使用单独的训练脚本**。
 
 ## 核心思路
 
@@ -29,9 +31,9 @@ Attention-Guided Crop 是一个**可插拔的增强模块**，已经集成到现
 
 ## 快速使用
 
-### 方式 1：修改配置文件（推荐）
+### 方式 1：修改配置（推荐，仅供自行实验）
 
-在 `train.py` 中找到配置区域，设置：
+在 `scripts/train.py` 中找到配置区域，设置：
 
 ```python
 # ================== Attention-Guided Crop 配置 ==================
@@ -50,7 +52,7 @@ AG_BATCH_SIZE = 12            # batch size（需要更小）
 python train.py
 ```
 
-### 方式 2：使用便捷入口
+### 方式 2：使用便捷入口（已停用，仅供参考）
 
 ```bash
 python train_attention_crop.py
@@ -58,7 +60,7 @@ python train_attention_crop.py
 
 这会自动设置 `USE_ATTENTION_CROP = True` 并运行训练。
 
-### 方式 3：在代码中包装现有模型
+### 方式 3：在代码中包装现有模型（研究用示例）
 
 ```python
 from src.models import TorchXRayVisionDenseNet
@@ -83,7 +85,7 @@ logits = ag_model(x_low, x_high)  # x_low: 224x224, x_high: 512x512
 
 ## 配置说明
 
-### train.py (XRV 模型)
+### scripts/train.py (XRV 模型)
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -97,7 +99,7 @@ logits = ag_model(x_low, x_high)  # x_low: 224x224, x_high: 512x512
 
 ### train_timm_models.py (timm 模型)
 
-同上配置项。注意：仅支持 CNN 类模型（ConvNeXt, EfficientNet, ResNet），**不支持 ViT**。
+同上配置项。注意：仅支持在 `TIMM_FEATURE_DIMS` 中已定义的 CNN 类模型（如 ConvNeXt 等），**不支持 ViT**。
 
 ## 融合方式
 
@@ -126,7 +128,7 @@ fused = FC([global, local_1, local_2])
 fused = proj_global(global) + mean(proj_local([local_1, local_2]))
 ```
 
-## 显存需求
+## 显存需求（基于早期实验）
 
 | 模式 | Batch Size | 显存需求 |
 |------|------------|----------|
@@ -135,21 +137,19 @@ fused = proj_global(global) + mean(proj_local([local_1, local_2]))
 | AG-Crop | 8 | ~7 GB |
 | AG-Crop (share_backbone) | 12 | ~8 GB |
 
-如果显存不足：
+如果显存不足（仅在自行开启 AG-Crop 实验时需要考虑）：
 1. 减小 `AG_BATCH_SIZE`
 2. 设置 `AG_SHARE_BACKBONE = True`
 3. 减小 `AG_HIGH_RES`（如 448）
 
-## 预期效果
+## 实验结果与结论
 
-相比标准单分辨率训练：
+在本项目的数据规模和模型配置下，我们对 Attention-Guided Crop 进行了多轮对比实验，发现：
 
-| 类别 | 预期提升 |
-|------|----------|
-| Nodule | +3-8% AUC |
-| Mass | +2-5% AUC |
-| Pneumothorax | +2-4% AUC |
-| 整体 Macro-AUC | +1-3% |
+- 训练时间和显存开销增加约 2–2.5 倍；
+- 对整体 AUC / F1 指标**没有带来稳定、显著的提升**，个别类别的波动也缺乏一致性。
+
+因此，最终在主实验中**选择直接使用高分辨率单分支模型（例如 384/512 分辨率的 ConvNeXt 等）**，并将 AG-Crop 标记为**已停用的探索性策略**。
 
 ## 文件结构
 
@@ -171,7 +171,7 @@ chestxray_multilabel/
 
 ### Q: 训练速度变慢了？
 
-A: 正常现象，高分辨率处理和多次特征提取会增加计算量。预期为标准训练的 1.5-2 倍时间。
+A: 正常现象，高分辨率处理和多次特征提取会增加计算量。早期实验中，训练时间大约是标准训练的 1.5–2 倍。
 
 ### Q: 显存不足？
 

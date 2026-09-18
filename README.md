@@ -1,273 +1,197 @@
-# ChestX-ray14 多标签分类项目
+# ChestX-ray14 Multi-Label Classification
 
-基于深度学习的胸部 X 光多标签分类系统，使用 NIH ChestX-ray14 数据集进行 14 种疾病的多标签分类。
+An end-to-end research project for multi-label chest X-ray classification on a filtered subset of the NIH ChestX-ray14 dataset. The project compares modern CNN and transformer backbones, uses imbalance-aware objectives, and combines complementary models with calibrated ensembling.
 
-## 📋 项目概述
+> **Research use only.** This repository is not a medical device and must not be used for clinical diagnosis.
 
-本项目实现了多种先进的深度学习策略，用于胸部 X 光图像的多标签疾病分类：
+## Highlights
 
-- **多模型集成学习**：支持 torchxrayvision 预训练模型和 timm 模型
-- **Attention-Guided Crop**：基于注意力机制的高分辨率局部特征提取
-- **两阶段训练策略**：分阶段优化表征学习和指标对齐
-- **多种损失函数**：BCE、Focal Loss、Asymmetric Loss、Logit Adjusted Loss 等
+- **14-label prediction** for common findings including Atelectasis, Cardiomegaly, Effusion, Infiltration, Mass, Nodule, Pneumonia, Pneumothorax, Consolidation, Edema, Emphysema, Fibrosis, Pleural Thickening, and Hernia.
+- **High-resolution training** at 384 or 512 pixels to preserve small-lesion detail.
+- **Modern backbones** from `timm`, including ConvNeXt, Swin Transformer, and CoaT.
+- **Imbalance-aware training** with weighted BCE, focal loss, label smoothing, Mixup, and early stopping.
+- **Patient-wise stratified splits** to keep studies from the same patient in one partition.
+- **Model ensembling** with simple averaging, differential-evolution weighting, probability calibration, NNLS stacking, and per-class threshold optimization.
 
-### 支持的疾病类别（14类）
+## Reported results
 
-| 疾病名称 | 中文名称 |
-|----------|----------|
-| Atelectasis | 肺不张 |
-| Cardiomegaly | 心脏肥大 |
-| Effusion | 胸腔积液 |
-| Infiltration | 浸润 |
-| Mass | 肿块 |
-| Nodule | 结节 |
-| Pneumonia | 肺炎 |
-| Pneumothorax | 气胸 |
-| Consolidation | 实变 |
-| Edema | 肺水肿 |
-| Emphysema | 肺气肿 |
-| Fibrosis | 纤维化 |
-| Pleural_Thickening | 胸膜增厚 |
-| Hernia | 膈疝 |
+The current experiment report on the project subset shows the following validation results:
 
-## 🏗️ 项目结构
+| Metric | Best single model | Best ensemble |
+|:--|--:|--:|
+| Macro-AUC | 0.8219 | **0.8287** |
+| Macro-F1 | 0.3454 | **0.3667** |
 
-```
+The results were obtained on an NVIDIA RTX 4080 (12 GB). Exact scores depend on the data split, installed versions, random seeds, and available pretrained weights.
+
+![Per-class evaluation heatmap](figures/metrics_heatmap.png)
+
+## Repository layout
+
+```text
 chestxray_multilabel/
-├── train.py                    # XRV 模型集成训练（DenseNet121）
-├── train_timm_models.py        # timm 模型训练（ConvNeXt, ViT, EfficientNet）
-│
-├── src/                        # 核心模块
-│   ├── cxr_config.py           # 配置文件（超参数、路径等）
-│   ├── dataset.py              # 数据集类（标准/多分辨率）
-│   ├── models.py               # 模型定义（DenseNet, torchxrayvision）
-│   ├── models_timm.py          # timm 模型包装器
-│   ├── models_attention_crop.py# Attention-Guided Crop 模块
-│   ├── loss_utils.py           # 损失函数（Focal, ASL, HybridLoss 等）
-│   ├── metrics_utils.py        # 评估指标（AUC, F1, 阈值搜索）
-│   └── log_utils.py            # 日志工具
-│
-├── scripts/                    # 辅助脚本
-│   ├── ensemble_timm.py        # timm 模型集成评估
-│   ├── ensemble_search.py      # 集成权重搜索
-│   ├── ensemble_val.py         # 验证集集成评估
-│   ├── train_attention_crop.py # Attention-Guided Crop 训练
-│   └── infer.py                # 推理脚本
-│
-├── data/                       # 数据目录
-│   └── filtered_labels.csv     # 标签文件
-├── saved_models/               # 模型保存目录
-├── logs/                       # 训练日志目录
-├── docs/                       # 文档
-│   ├── README_attention_crop.md
-│   └── README_two_stage.md
-│
-├── requirements.txt            # pip 依赖包列表
-└── environment.yml             # Conda 环境配置
+|-- train_timm_models.py       # Main ConvNeXt/Swin/CoaT training entry point
+|-- ensemble_timm.py           # Timm model ensemble evaluation and optimization
+|-- ensemble_timm_v0.py        # Earlier ensemble implementation
+|-- scripts/
+|   |-- train.py               # TorchXRayVision DenseNet baseline
+|   |-- infer.py               # Single-image or batch inference utilities
+|   |-- test_evaluation.py     # Final test-set evaluation
+|   |-- visualize_results.py   # ROC, PR, confusion matrix, and metric plots
+|   |-- ensemble_search.py     # Ensemble weight search
+|   |-- ensemble_val.py        # Validation ensemble evaluation
+|   +-- train_attention_crop.py # Legacy attention-guided crop entry point
+|-- src/
+|   |-- cxr_config.py          # Paths, labels, and training configuration
+|   |-- dataset.py             # Dataset and multi-resolution transforms
+|   |-- models_timm.py         # Timm model wrappers
+|   |-- models.py              # TorchXRayVision model definitions
+|   |-- loss_utils.py          # BCE, focal, ASL, and hybrid losses
+|   |-- metrics_utils.py       # AUC/F1 metrics and threshold search
+|   +-- log_utils.py           # File and console logging helpers
+|-- data/filtered_labels.csv   # Filtered label metadata
+|-- docs/                      # Supplementary experiment notes
+|-- requirements.txt           # Pip dependencies
++-- environment.yml            # Conda environment definition
 ```
 
-## 🚀 快速开始
+Model checkpoints, prediction dumps, logs, local datasets, and editor metadata are intentionally excluded from version control. The repository contains the training and evaluation code; pretrained or locally trained weights must be supplied separately.
 
-### 环境配置
+## Installation
 
-#### 方式 1：使用 Conda（推荐）
+### Conda (recommended)
 
 ```bash
-# 创建并激活环境
 conda env create -f environment.yml
 conda activate chestxray
 ```
 
-#### 方式 2：使用 pip
+### Pip / virtual environment
 
 ```bash
-# 创建虚拟环境
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
 
-# 安装依赖
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# Linux/macOS
+# source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### 必需依赖
+Python 3.9 or newer is required. CUDA is recommended for training; the code falls back to CPU when CUDA is unavailable.
 
-- Python >= 3.9
-- PyTorch >= 2.0.0（CUDA 12.1）
-- torchvision >= 0.15.0
-- timm >= 0.9.0
-- torchxrayvision >= 1.2.0
-- scikit-learn >= 1.2.0
-- pandas >= 2.0.0
-- numpy >= 1.24.0
+## Dataset setup
 
-### 数据准备
+1. Obtain the NIH ChestX-ray14 images and the project label metadata through the official dataset distribution.
+2. Set `NIH_DATA_ROOT` in `src/cxr_config.py` to the local dataset directory.
+3. Arrange the files as follows:
 
-1. 下载 NIH ChestX-ray14 数据集
-2. 修改 `src/cxr_config.py` 中的数据路径：
-
-```python
-NIH_DATA_ROOT = r"C:\path\to\NIH_DATA_ROOT"
-```
-
-3. 确保目录结构如下：
-```
+```text
 NIH_DATA_ROOT/
-├── images/          # 所有图像文件
-└── filtered_labels.csv  # 标签文件
+|-- images/
++-- filtered_labels.csv
 ```
 
-## 🎯 训练模型
+The training pipeline uses an 80/10/10 patient-wise split. Images from one patient are kept in a single split, and rare labels are considered during stratification to make validation and test metrics more stable.
 
-### 方式 1：XRV 模型集成训练
+## Training
 
-使用 torchxrayvision 预训练的 DenseNet121 模型：
-
-```bash
-python train.py
-```
-
-支持的预训练权重（不含 NIH 数据，避免数据泄漏）：
-- `densenet121-res224-chex`：CheXpert 数据集
-- `densenet121-res224-pc`：PadChest 数据集  
-- `densenet121-res224-mimic_nb`：MIMIC-CXR (NoBBox)
-- `densenet121-res224-mimic_ch`：MIMIC-CXR (ChestOnly)
-
-### 方式 2：timm 模型训练
-
-使用 timm 库的现代模型架构：
+The primary training entry point is:
 
 ```bash
 python train_timm_models.py
 ```
 
-支持的模型：
-- **ConvNeXt**：convnext_base_in22k, convnext_base_in22k_384, convnext_base_in22k_512
-- **ConvNeXtV2**：convnextv2_base_fcmae_384
-- **EfficientNetV2**：tf_efficientnetv2_m
+The main comparison includes:
 
-### 方式 3：Attention-Guided Crop
+| Family | Model | Input size | Approx. parameters |
+|:--|:--|:--:|--:|
+| CNN | ConvNeXt-Base (ImageNet-22K) | 384/512 | 89M |
+| CNN | ConvNeXt-Small (ImageNet-22K) | 384 | 50M |
+| Transformer | Swin-Base (ImageNet-22K) | 384 | 88M |
+| Hybrid | CoaT-Lite-Medium | 384 | 45M |
 
-启用高分辨率局部特征提取：
-
-```bash
-python scripts/train_attention_crop.py
-```
-
-或在配置中启用：
-```python
-# train.py 中设置
-USE_ATTENTION_CROP = True
-AG_HIGH_RES = 512
-AG_NUM_CROPS = 2
-```
-
-## ⚙️ 核心配置
-
-### 训练超参数 (`src/cxr_config.py`)
-
-```python
-# DenseNet 系列
-BATCH_SIZE = 48
-NUM_EPOCHS = 30
-LR = 1e-4
-MIXUP_ALPHA = 0.2
-
-# Timm 模型
-TIMM_BATCH_SIZE = 8
-TIMM_NUM_EPOCHS = 20
-TIMM_LR = 1e-4
-```
-
-### 两阶段训练策略
-
-```python
-TWO_STAGE_ENABLED = True           # 启用两阶段训练
-TWO_STAGE_STAGE1_EPOCHS = 15       # Stage 1 epoch 数
-TWO_STAGE_STAGE2_LOSS = "asl"      # Stage 2 损失函数
-TWO_STAGE_LR_FACTOR = 0.1          # Stage 2 学习率倍数
-```
-
-**训练流程**：
-```
-Stage 1 (稳定学习表征)       Stage 2 (指标对齐微调)
-━━━━━━━━━━━━━━━━━━━━━━━      ━━━━━━━━━━━━━━━━━━━━━━━
-• HybridLoss                • Asymmetric Loss (ASL)
-• 正常学习率                 • 低学习率 (LR × 0.1)
-• Mixup 启用                 • Mixup 禁用
-```
-
-### Attention-Guided Crop 配置
-
-```python
-AG_LOW_RES = 224           # 全局分支输入分辨率
-AG_HIGH_RES = 512          # 高分辨率图
-AG_NUM_CROPS = 2           # 裁剪区域数量
-AG_CROP_SIZE = 224         # 裁剪后尺寸
-AG_FUSION_TYPE = "concat_attention"  # 融合方式
-```
-
-## 📊 模型集成
-
-### 运行集成评估
+For the TorchXRayVision baseline, run:
 
 ```bash
-python scripts/ensemble_timm.py
+python scripts/train.py
 ```
 
-### 支持的集成策略
+Key defaults are defined in `src/cxr_config.py`:
 
-1. **简单平均**：所有模型预测概率的平均值
-2. **加权平均**：网格搜索最佳权重组合
-3. **分层加权**：高/低分辨率模型分组加权
-4. **Logistic Stacking**：使用交叉验证训练元分类器
-5. **Per-class 自适应权重**：根据各模型在每个类别上的 AUC 分配权重
+- Timm batch size: `8`
+- Training epochs: `20`
+- Learning rate: `1e-4`
+- Warmup: `2` epochs
+- Mixup alpha: `0.1`
+- Early stopping patience: `3` epochs
 
-## 📈 评估指标
+The default augmentation policy is deliberately conservative for medical images: moderate random resized crops, horizontal flips, small rotations, light brightness/contrast changes, and low-strength Mixup.
 
-- **Macro-AUC**：各类别 AUC 的宏平均
-- **Macro-F1**：各类别 F1 的宏平均
-- **Weighted-F1**：加权 F1 分数
-- **Per-class 阈值优化**：针对每个类别独立搜索最优阈值
+## Evaluation and ensembling
 
-## 🔧 损失函数
+Evaluate trained checkpoints on the held-out test split with:
 
-| 损失函数 | 说明 | 适用场景 |
-|----------|------|----------|
-| `BCEWithLogitsLoss` | 标准二元交叉熵 | 基础训练 |
-| `HybridLoss` | BCE + Focal + LabelSmooth | Stage 1 稳定学习 |
-| `AsymmetricLoss` | 正负样本不对称惩罚 | Stage 2 优化召回 |
-| `MultiLabelFocalLoss` | 聚焦难分样本 | 类别不平衡 |
-| `LogitAdjustedLoss` | Logit 调整 | 极度不平衡 |
-
-## 📁 输出文件
-
-训练完成后，模型和预测结果保存在 `saved_models/` 目录：
-
+```bash
+python scripts/test_evaluation.py
 ```
+
+Run the ensemble evaluation with:
+
+```bash
+python ensemble_timm.py
+```
+
+The evaluation utilities report macro-AUC, macro-F1, per-class metrics, and independently optimized decision thresholds. The ensemble code supports:
+
+1. Probability averaging and weighted averaging
+2. Differential-evolution weight search
+3. Isotonic probability calibration
+4. Per-class non-negative least-squares (NNLS) stacking
+5. Joint threshold optimization
+
+Visual reports can be generated with:
+
+```bash
+python scripts/visualize_results.py
+```
+
+## Design notes
+
+The project focuses on three practical issues in ChestX-ray14: tiny lesions, severe class imbalance, and noisy labels. High-resolution inputs retain more local detail; the hybrid loss combines weighted BCE, focal loss, and label smoothing; and diverse backbones provide complementary errors for ensembling.
+
+Attention-guided cropping and two-stage loss scheduling are kept as legacy experiments in the source tree. In the current experiments they added complexity without a consistent improvement over the direct high-resolution training and ensemble pipeline.
+
+## Outputs and checkpoints
+
+Training writes checkpoints and validation artifacts under `saved_models/`, while logs are written to `logs/`. These paths are ignored by Git. Checkpoint extensions and generated prediction archives are also ignored globally so that large model artifacts cannot be added accidentally.
+
+Typical local outputs include:
+
+```text
 saved_models/
-├── xrv-chex_best.pt           # XRV 模型权重
-├── xrv-pc_best.pt
-├── convnext_base_in22k_best.pt # timm 模型权重
-├── convnext_base_in22k_384_best.pt
-│
-├── xrv-chex_val_preds.npz     # 验证集预测
-├── xrv-chex_val_labels.npz    # 验证集标签
-└── ...
+|-- *_best_auc.pt
+|-- *_best_f1.pt
+|-- *_val_preds.npz
+|-- *_val_labels.npz
++-- *_val_files.npz
 ```
 
-## 📚 更多文档
+## Limitations
 
-- [Attention-Guided Crop 使用说明](docs/README_attention_crop.md)
-- [两阶段训练策略说明](docs/README_two_stage.md)
+- The reported experiments use ImageNet-pretrained backbones and a filtered project subset rather than a complete domain-pretraining pipeline.
+- Rare labels remain difficult to evaluate reliably even with stratified splits.
+- Results are research benchmarks, not evidence of clinical performance.
 
-## 🔗 参考资料
+## References
 
-- [NIH ChestX-ray14 数据集](https://nihcc.app.box.com/v/ChestXray-NIHCC)
-- [torchxrayvision](https://github.com/mlmed/torchxrayvision)
-- [timm](https://github.com/huggingface/pytorch-image-models)
-- [Asymmetric Loss (CVPR 2021)](https://arxiv.org/abs/2009.14119)
+- [NIH ChestX-ray14](https://nihcc.app.box.com/v/Chestxray-NIHCC)
+- [PyTorch Image Models (timm)](https://github.com/huggingface/pytorch-image-models)
+- [TorchXRayVision](https://github.com/mlmed/torchxrayvision)
+- [Asymmetric Loss for Multi-Label Classification](https://arxiv.org/abs/2009.14119)
 
-## 📄 许可证
+## License
 
-本项目仅用于学术研究目的。
+No open-source license has been selected for this repository yet. Add a license before accepting external contributions or redistributing the code.

@@ -27,7 +27,8 @@ from copy import deepcopy
 from src.cxr_config import (
     LABEL_CSV, SAVE_DIR, IMAGES_DIR,
     DEVICE, RANDOM_SEED,
-    BATCH_SIZE, NUM_EPOCHS, WARMUP_EPOCHS, LR, WEIGHT_DECAY, VAL_RATIO, CLASS_NAMES,
+    BATCH_SIZE, NUM_EPOCHS, WARMUP_EPOCHS, LR, WEIGHT_DECAY, 
+    VAL_RATIO, TEST_RATIO, TRAIN_RATIO, RARE_CLASSES, CLASS_NAMES,
     MIXUP_ALPHA, GRAD_CLIP_NORM, USE_EMA,
     EARLY_STOP, EARLY_STOP_PATIENCE, )
 from src.dataset import ChestXrayDataset, get_xrv_transforms, ChestXrayMultiResDatasetV2
@@ -176,7 +177,11 @@ class ModelEma:
 
 
 def prepare_data():
-    """准备数据集，返回 df_labels, train_files, val_files"""
+    """
+    准备数据集，返回 df_labels, train_files, val_files, test_files
+    
+    采用分层抽样策略，确保稀有类别在验证集和测试集中都有样本
+    """
     set_seed(RANDOM_SEED)
     
     df_all = pd.read_csv(LABEL_CSV)
@@ -190,27 +195,112 @@ def prepare_data():
     
     print(f"CSV 总行数: {len(df_all)}")
     print(f"images 目录中图片数: {len(available_imgs)}")
-    print(f"用于训练/验证的样本数(交集): {len(df_labels)}")
+    print(f"用于训练/验证/测试的样本数(交集): {len(df_labels)}")
     
-    # 按病人划分
+    # === patient-wise stratified split ===
     PATIENT_COL = "Patient ID"
+    
+    def get_patient_labels(patient_id):
+        """获取某个患者的所有疾病标签"""
+        patient_findings = df_labels[df_labels[PATIENT_COL] == patient_id]["Finding Labels"].values
+        labels = set()
+        for findings in patient_findings:
+            if findings != "No Finding":
+                for disease in str(findings).split("|"):
+                    labels.add(disease.strip())
+        return labels
+    
     unique_patients = df_labels[PATIENT_COL].unique()
     print(f"总病人数: {len(unique_patients)}")
     
+    # 构建患者到疾病的映射
+    patient_to_labels = {p: get_patient_labels(p) for p in unique_patients}
+    
+    # 构建疾病到患者的映射
+    disease_to_patients = {cls: [] for cls in RARE_CLASSES}
+    for patient, labels in patient_to_labels.items():
+        for disease in labels:
+            if disease in RARE_CLASSES:
+                disease_to_patients[disease].append(patient)
+    
     rng = np.random.RandomState(RANDOM_SEED)
-    rng.shuffle(unique_patients)
     
-    n_val_patients = max(1, int(len(unique_patients) * VAL_RATIO))
-    val_patients = set(unique_patients[:n_val_patients])
-    train_patients = set(unique_patients[n_val_patients:])
+    # 初始化三个集合
+    train_patients = set()
+    val_patients = set()
+    test_patients = set()
+    assigned_patients = set()
     
+    # Step 1: 对稀有类别进行分层抽样
+    min_samples_per_split = 2
+    
+    for disease in RARE_CLASSES:
+        disease_patients = [p for p in disease_to_patients[disease] if p not in assigned_patients]
+        if len(disease_patients) == 0:
+            continue
+            
+        rng.shuffle(disease_patients)
+        n_total = len(disease_patients)
+        
+        n_test = max(min_samples_per_split, int(n_total * TEST_RATIO))
+        n_val = max(min_samples_per_split, int(n_total * VAL_RATIO))
+        n_train = n_total - n_test - n_val
+        
+        if n_train < 1:
+            if n_total >= 3:
+                n_test = 1
+                n_val = 1
+                n_train = n_total - 2
+            elif n_total == 2:
+                n_test = 1
+                n_val = 1
+                n_train = 0
+            else:
+                n_train = 1
+                n_val = 0
+                n_test = 0
+        
+        idx = 0
+        for p in disease_patients[idx:idx + n_test]:
+            test_patients.add(p)
+            assigned_patients.add(p)
+        idx += n_test
+        
+        for p in disease_patients[idx:idx + n_val]:
+            val_patients.add(p)
+            assigned_patients.add(p)
+        idx += n_val
+        
+        for p in disease_patients[idx:idx + n_train]:
+            train_patients.add(p)
+            assigned_patients.add(p)
+    
+    # Step 2: 对剩余患者进行随机划分
+    remaining_patients = [p for p in unique_patients if p not in assigned_patients]
+    rng.shuffle(remaining_patients)
+    
+    n_remaining = len(remaining_patients)
+    n_test_remaining = int(n_remaining * TEST_RATIO)
+    n_val_remaining = int(n_remaining * VAL_RATIO)
+    
+    for p in remaining_patients[:n_test_remaining]:
+        test_patients.add(p)
+    for p in remaining_patients[n_test_remaining:n_test_remaining + n_val_remaining]:
+        val_patients.add(p)
+    for p in remaining_patients[n_test_remaining + n_val_remaining:]:
+        train_patients.add(p)
+    
+    # 获取每个集合的文件列表
     train_files = df_labels[df_labels[PATIENT_COL].isin(train_patients)]["Image Index"].tolist()
     val_files = df_labels[df_labels[PATIENT_COL].isin(val_patients)]["Image Index"].tolist()
+    test_files = df_labels[df_labels[PATIENT_COL].isin(test_patients)]["Image Index"].tolist()
     
-    print(f"训练集: {len(train_patients)} 个病人, {len(train_files)} 张图片")
-    print(f"验证集: {len(val_patients)} 个病人, {len(val_files)} 张图片")
+    print(f"\n数据集划分结果:")
+    print(f"  训练集: {len(train_patients)} 个病人, {len(train_files)} 张图片 ({len(train_files)/len(df_labels)*100:.1f}%)")
+    print(f"  验证集: {len(val_patients)} 个病人, {len(val_files)} 张图片 ({len(val_files)/len(df_labels)*100:.1f}%)")
+    print(f"  测试集: {len(test_patients)} 个病人, {len(test_files)} 张图片 ({len(test_files)/len(df_labels)*100:.1f}%)")
     
-    return df_labels, train_files, val_files
+    return df_labels, train_files, val_files, test_files
 
 
 def build_criterion(df_labels, model_name=None, stage: int = 1):
@@ -843,7 +933,17 @@ def train_ensemble():
     print("=" * 60)
     
     # 准备数据
-    df_labels, train_files, val_files = prepare_data()
+    df_labels, train_files, val_files, test_files = prepare_data()
+    
+    # 保存数据集划分信息
+    split_info_path = os.path.join(SAVE_DIR, "dataset_split.npz")
+    np.savez(
+        split_info_path,
+        train_files=np.array(train_files),
+        val_files=np.array(val_files),
+        test_files=np.array(test_files),
+    )
+    print(f"\n数据集划分信息已保存到: {split_info_path}")
     
     # 训练所有模型（每个模型使用对应的 loss 策略）
     model_results = {}
