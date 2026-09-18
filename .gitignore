@@ -31,7 +31,6 @@ env/
 .DS_Store
 Thumbs.db
 
-
 # Public repository hygiene
 # The Chinese README and course/project notes stay local.
 README.zh-CN.md
@@ -48,6 +47,15 @@ out/
 # Large datasets and local image copies
 /data/images/
 /data/*.zip
+/data/**/*.png
+/data/**/*.jpg
+/data/**/*.jpeg
+/data/**/*.webp
+
+# Keep the checkpoint directory visible while ignoring its contents
+!saved_models/
+saved_models/*
+!saved_models/.gitkeep
 
 # Model checkpoints, exported models, and prediction dumps
 *.pt
@@ -57,9 +65,4 @@ out/
 *.safetensors
 *.onnx
 *.npz
-# Additional dataset/image and generated-array safeguards
-/data/**/*.png
-/data/**/*.jpg
-/data/**/*.jpeg
-/data/**/*.webp
 *.npy
